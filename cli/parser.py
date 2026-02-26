@@ -6,6 +6,10 @@ def create_parser():
         prog="portviz", description="Windows Port Inspection CLI Tool"
     )
 
+    parser.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
+
     subparsers = parser.add_subparsers(dest="command")
 
     # report command
