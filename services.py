@@ -1,6 +1,6 @@
 from typing import List
-from portviz.collectors.windows import collect_ports
-from portviz.core.models import PortEntry
+from .collectors.windows import collect_ports
+from .core.models import PortEntry
 
 
 def collect_port_data() -> List[PortEntry]:
