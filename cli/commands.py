@@ -184,14 +184,23 @@ def handle_command(args):
         elif args.snapshot_command == "diff":
             snapshots = list_snapshots()
 
-            if len(snapshots) < 2:
-                print("Need at least two snapshots to diff.")
+            if args.snapshot1 and args.snapshot2:
+                file1 = args.snapshot1
+                file2 = args.snapshot2
+
+            else:
+                if len(snapshots) < 2:
+                    print("Need at least two snapshots to diff.")
+                    return
+
+                file1 = snapshots[-2]["filename"]
+                file2 = snapshots[-1]["filename"]
+
+            try:
+                diff_result = diff_snapshots(file1, file2)
+            except FileNotFoundError:
+                print("One or both snapshot files not found.")
                 return
-
-            file1 = snapshots[-2]["filename"]
-            file2 = snapshots[-1]["filename"]
-
-            diff_result = diff_snapshots(file1, file2)
 
             if args.json:
                 print_json(diff_result)
