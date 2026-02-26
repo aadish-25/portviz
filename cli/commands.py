@@ -11,6 +11,7 @@ from ..actions.process import kill_process
 from ..cli.json_utils import print_json
 from ..storage.snapshot import save_snapshot
 from ..storage.snapshot import list_snapshots
+from ..storage.snapshot import diff_snapshots
 
 def handle_command(args):
     if args.command == "report":
@@ -179,3 +180,27 @@ def handle_command(args):
             print("---- Saved Snapshots ----")
             for snap in snapshots:
                 print(f"{snap['filename']} | {snap['created_at']} | {snap['entry_count']} entries")
+
+        elif args.snapshot_command == "diff":
+            snapshots = list_snapshots()
+
+            if len(snapshots) < 2:
+                print("Need at least two snapshots to diff.")
+                return
+
+            file1 = snapshots[-2]["filename"]
+            file2 = snapshots[-1]["filename"]
+
+            diff_result = diff_snapshots(file1, file2)
+
+            if args.json:
+                print_json(diff_result)
+                return
+
+            print("---- Snapshot Diff ----")
+            print(f"Comparing {file1} → {file2}")
+            print("\nNew Entries:")
+            print(diff_result["new_entries"] or "None")
+
+            print("\nClosed Entries:")
+            print(diff_result["closed_entries"] or "None")
