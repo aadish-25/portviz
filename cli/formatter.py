@@ -1,10 +1,10 @@
-from portviz.core.summary import build_port_summary
-from portviz.core.processors import (
+from ..core.summary import build_port_summary
+from ..core.processors import (
     get_externally_accessible_listening_ports,
     get_local_listening_ports,
     get_dual_stack_ports,
 )
-from portviz.core.models import PortEntry
+from ..core.models import PortEntry
 from typing import List
 
 
