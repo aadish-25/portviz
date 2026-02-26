@@ -1,7 +1,13 @@
 from ..services import collect_port_data
 from ..cli.formatter import print_portviz_report
 from ..core.summary import build_port_summary
-from ..core.processors import (get_externally_accessible_listening_ports, get_local_listening_ports, get_dual_stack_ports)
+from ..core.processors import (
+    get_externally_accessible_listening_ports,
+    get_local_listening_ports,
+    get_dual_stack_ports,
+)
+from ..core.processors import filter_by_port
+
 
 def handle_command(args):
     if args.command == "report":
@@ -39,7 +45,9 @@ def handle_command(args):
 
         else:
             print("---- Listening Ports ----")
-            header = f"{'Port':<8} {'Protocol':<8} {'IP':<20} {'Process':<25} {'PID':<8}"
+            header = (
+                f"{'Port':<8} {'Protocol':<8} {'IP':<20} {'Process':<25} {'PID':<8}"
+            )
             print(header)
             print("-" * len(header))
 
@@ -52,3 +60,26 @@ def handle_command(args):
                         f"{str(entry.process_name):<25} "
                         f"{entry.pid:<8}"
                     )
+
+        elif args.command == "port":
+            data = collect_port_data()
+            results = filter_by_port(data, args.port_number)
+
+            if not results:
+                print(f"No entries found for port {args.port_number}")
+                return
+
+            print(f"---- Details for Port {args.port_number} ----")
+            header = f"{'Protocol':<8} {'Local IP':<20} {'Foreign IP':<20} {'State':<15} {'Process':<25} {'PID':<8}"
+            print(header)
+            print("-" * len(header))
+
+            for entry in results:
+                print(
+                    f"{entry.protocol:<8} "
+                    f"{entry.local_ip:<20} "
+                    f"{entry.foreign_ip:<20} "
+                    f"{str(entry.state):<15} "
+                    f"{str(entry.process_name):<25} "
+                    f"{entry.pid:<8}"
+                )

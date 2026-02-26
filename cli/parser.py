@@ -33,4 +33,9 @@ def create_parser():
         help="Show dual-stack listening ports (IPv4 + IPv6)",
     )
 
+    # port command
+    port_parser = subparsers.add_parser("port", help="Inspect a specific port")
+
+    port_parser.add_argument("port_number", type=int, help="Port number to inspect")
+
     return parser
