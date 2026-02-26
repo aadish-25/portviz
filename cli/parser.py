@@ -48,4 +48,17 @@ def create_parser():
     group.add_argument("--pid", type=int, help="Process ID to terminate")
     group.add_argument("--port", type=int, help="Kill process(es) using this port")
 
+    # snapshot parser
+    snapshot_parser = subparsers.add_parser(
+        "snapshot",
+        help="Manage port snapshots"
+    )
+
+    snapshot_subparsers = snapshot_parser.add_subparsers(dest="snapshot_command")
+
+    snapshot_subparsers.add_parser(
+        "save",
+        help="Save current port state as snapshot"
+    )
+
     return parser
