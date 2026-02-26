@@ -54,7 +54,7 @@ def create_parser():
     snapshot_subparsers = snapshot_parser.add_subparsers(dest="snapshot_command")
 
     snapshot_subparsers.add_parser("save", help="Save current port state as snapshot")
-
     snapshot_subparsers.add_parser("list", help="List saved snapshots")
+    snapshot_subparsers.add_parser("diff", help="Diff the last two snapshots")
 
     return parser
