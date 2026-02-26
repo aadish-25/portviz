@@ -14,4 +14,23 @@ def create_parser():
     # summary command
     subparsers.add_parser("summary", help="Show summarized port statistics")
 
+    # list command and its flags
+    list_parser = subparsers.add_parser("list", help="List listening ports")
+
+    list_parser.add_argument(
+        "--public",
+        action="store_true",
+        help="Show externally accessible listening ports",
+    )
+
+    list_parser.add_argument(
+        "--local", action="store_true", help="Show local-only listening ports"
+    )
+
+    list_parser.add_argument(
+        "--dual",
+        action="store_true",
+        help="Show dual-stack listening ports (IPv4 + IPv6)",
+    )
+
     return parser
