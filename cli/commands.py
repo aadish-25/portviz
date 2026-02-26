@@ -9,7 +9,7 @@ from ..core.processors import (
 from ..core.processors import filter_by_port
 from ..actions.process import kill_process
 from ..cli.json_utils import print_json
-
+from ..storage.snapshot import save_snapshot
 
 def handle_command(args):
     if args.command == "report":
@@ -152,3 +152,14 @@ def handle_command(args):
 
             if args.json:
                 print_json(results)
+
+    elif args.command == "snapshot":
+        if args.snapshot_command == "save":
+            data = collect_port_data()
+            filepath = save_snapshot(data)
+
+            if args.json:
+                print_json({"snapshot_file": filepath})
+                return
+
+            print(f"Snapshot saved to {filepath}")
