@@ -1,7 +1,7 @@
-# Portviz
+# Portviz  
 **Cross-Platform Port & Process Manager for Developers**
 
-Portviz is a developer-focused tool designed to inspect active network ports, identify the processes bound to them, and safely terminate processes without relying on complex system commands.
+Portviz is a developer-focused utility designed to inspect active network ports, identify the processes bound to them, and safely terminate processes without relying on complex system commands.
 
 It simplifies debugging scenarios like “Address already in use” errors by providing structured, readable port information and streamlined process control.
 
@@ -13,7 +13,8 @@ Portviz is being built in structured phases:
 
 - Core cross-platform port inspection engine (Python)
 - CLI utility for fast terminal usage
-- VSCode extension for in-editor visibility and control
+- VS Code extension for in-editor visibility and control
+- Project-level service and port orchestration layer
 
 The long-term goal is to create a modular developer utility that integrates seamlessly into modern development workflows.
 
@@ -26,6 +27,7 @@ During development:
 - Servers may crash but keep ports occupied
 - “Port already in use” errors interrupt workflow
 - Identifying and killing processes requires OS-specific commands
+- Managing multiple services across different ports becomes difficult
 
 Examples:
 
@@ -40,19 +42,20 @@ Portviz abstracts these differences and provides a consistent interface.
 
 Portviz follows a layered architecture:
 
-### Core Engine (Python)
+### 1️⃣ Core Engine (Python)
 - Detects operating system
 - Executes system networking commands
 - Parses raw command output
 - Normalizes port data into structured objects
 - Handles safe process termination
 
-### CLI Layer (In Progress)
+### 2️⃣ CLI Layer
 - Displays structured port table
 - Assigns custom IDs for safe termination
 - Simplifies kill operations
+- Supports filtered views (e.g., LISTEN state)
 
-### VSCode Extension (Planned)
+### 3️⃣ VS Code Extension (Planned)
 - Sidebar port viewer
 - Refresh button
 - One-click process termination
@@ -81,17 +84,58 @@ This modular design ensures the engine can be reused across CLI tools and IDE in
 
 ---
 
-## 📦 Planned Features
+## 📦 Features
 
 - Cross-platform port inspection
 - LISTEN port filtering
-- Custom ID-based kill commands
+- PID-based safe termination
+- Structured port object normalization
+- OS abstraction layer
+- Modular reusable core engine
+
+---
+
+## 🔮 Future Enhancements
+
+### Project-Level Service Management
+- Workspace-based service configuration
+- Define service name, port, start command, dependencies, and type
+- One-click startup of all project services
+- Real-time service health monitoring
+- Port conflict detection
+
+### Service Topology Visualization
+- Visual representation of frontend–backend–database architecture
+- Live service status indicators
+- Traffic flow tracking (where possible)
+
+### Developer Experience Improvements
 - Interactive CLI mode
 - Auto-refresh/watch mode
-- VSCode sidebar integration
 - Docker container awareness
 - IPv4/IPv6 normalization
-- Safe permission handling
+- Permission safety checks
+- Performance optimizations
+
+---
+
+## 🧩 Example Future Configuration (Conceptual)
+
+Portviz may support project-level configuration such as:
+
+Frontend  
+- Port: 5173  
+- Command: `npm run dev`
+
+Backend  
+- Port: 8000  
+- Command: `nodemon server.js`
+
+Database  
+- Port: 5432  
+- External service (no start command)
+
+This would allow Portviz to function as a lightweight local development orchestrator inside VS Code.
 
 ---
 
@@ -101,8 +145,8 @@ This modular design ensures the engine can be reused across CLI tools and IDE in
 - OS-level Networking Utilities (`lsof`, `netstat`)  
 - Subprocess-based Process Management  
 - Cross-Platform OS Detection  
-- CLI Architecture (Planned)  
-- VSCode Extension API (Planned)  
+- CLI Architecture  
+- VS Code Extension API (Planned)  
 - Node.js Integration (Planned)  
 
 ---
@@ -112,16 +156,21 @@ This modular design ensures the engine can be reused across CLI tools and IDE in
 Currently in active development.
 
 Phase 1 focuses on building a robust, reusable port inspection engine.  
-CLI and VSCode integration layers will be built on top of the core module.
+CLI and VS Code integration layers will be built on top of the core module.
 
 ---
 
-## 📈 Future Scope
+## 📈 Long-Term Scope
 
-Portviz aims to evolve into a full developer productivity utility with:
+- Publish as a pip package
+- npm wrapper for JavaScript ecosystem
+- VS Code Marketplace extension
+- Project-level service orchestration
+- Local architecture visualization
+- Advanced developer workflow tooling
 
-- Published pip package
-- npm wrapper
-- VSCode Marketplace extension
-- Performance optimizations
-- Enhanced developer experience features
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
