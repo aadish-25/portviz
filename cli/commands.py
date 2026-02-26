@@ -99,26 +99,26 @@ def handle_command(args):
 
         elif args.port:
             data = collect_port_data()
-        entries = filter_by_port(data, args.port)
+            entries = filter_by_port(data, args.port)
 
-        if not entries:
-            print(f"No process found using port {args.port}")
-            return
+            if not entries:
+                print(f"No process found using port {args.port}")
+                return
 
-        # Collect unique PIDs
-        pids = set()
-        for entry in entries:
-            pids.add(entry.pid)
+            # Collect unique PIDs
+            pids = set()
+            for entry in entries:
+                pids.add(entry.pid)
 
-        print(f"Found {len(pids)} process(es) using port {args.port}")
+            print(f"Found {len(pids)} process(es) using port {args.port}")
 
-        for pid in pids:
-            print(f"\nKilling PID {pid}...")
-            result = kill_process(pid)
+            for pid in pids:
+                print(f"\nKilling PID {pid}...")
+                result = kill_process(pid)
 
-            if result.success:
-                print("Process terminated successfully.")
-            else:
-                print("Failed to terminate process.")
+                if result.success:
+                    print("Process terminated successfully.")
+                else:
+                    print("Failed to terminate process.")
 
-            print(result.message)
+                print(result.message)
