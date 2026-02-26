@@ -25,7 +25,7 @@ def print_portviz_report(data: List[PortEntry]):
     print()
 
     print("---- Listening Ports (Detailed) ----")
-    header = f"{'Port':<8} {'Protocol':<8} {'IP':<20} {'Process':<25} {'PID':<8}"
+    header = f"{'Port':<8} {'Protocol':<8} {'IP':<20} {'Process':<30} {'PID':<8}"
     print(header)
     print("-" * len(header))
 
