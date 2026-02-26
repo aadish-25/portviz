@@ -1,7 +1,7 @@
-# PortViz  
+# Portviz
 **Cross-Platform Port & Process Manager for Developers**
 
-PortViz is a developer-focused tool designed to inspect active network ports, identify the processes bound to them, and safely terminate processes without relying on complex system commands.
+Portviz is a developer-focused tool designed to inspect active network ports, identify the processes bound to them, and safely terminate processes without relying on complex system commands.
 
 It simplifies debugging scenarios like “Address already in use” errors by providing structured, readable port information and streamlined process control.
 
@@ -9,7 +9,7 @@ It simplifies debugging scenarios like “Address already in use” errors by pr
 
 ## 🚀 Vision
 
-PortViz is being built in structured phases:
+Portviz is being built in structured phases:
 
 - Core cross-platform port inspection engine (Python)
 - CLI utility for fast terminal usage
@@ -32,13 +32,13 @@ Examples:
 - macOS/Linux → `lsof -i :3000` + `kill -9 <PID>`
 - Windows → `netstat -ano` + `taskkill /PID <PID>`
 
-PortViz abstracts these differences and provides a consistent interface.
+Portviz abstracts these differences and provides a consistent interface.
 
 ---
 
 ## 🏗 Architecture Overview
 
-PortViz follows a layered architecture:
+Portviz follows a layered architecture:
 
 ### Core Engine (Python)
 - Detects operating system
@@ -118,7 +118,7 @@ CLI and VSCode integration layers will be built on top of the core module.
 
 ## 📈 Future Scope
 
-PortViz aims to evolve into a full developer productivity utility with:
+Portviz aims to evolve into a full developer productivity utility with:
 
 - Published pip package
 - npm wrapper
