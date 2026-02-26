@@ -8,6 +8,7 @@ from ..core.processors import (
 )
 from ..core.processors import filter_by_port
 from ..actions.process import kill_process
+from ..core.processors import filter_by_port
 
 
 def handle_command(args):
@@ -86,11 +87,38 @@ def handle_command(args):
             )
 
     elif args.command == "kill":
-        result = kill_process(args.pid)
+        if args.pid:
+            result = kill_process(args.pid)
 
-        if result.success:
-            print("Process terminated successfully.")
-        else:
-            print("Failed to terminate process.")
+            if result.success:
+                print("Process terminated successfully.")
+            else:
+                print("Failed to terminate process.")
 
-        print(result.message)
+            print(result.message)
+
+        elif args.port:
+            data = collect_port_data()
+        entries = filter_by_port(data, args.port)
+
+        if not entries:
+            print(f"No process found using port {args.port}")
+            return
+
+        # Collect unique PIDs
+        pids = set()
+        for entry in entries:
+            pids.add(entry.pid)
+
+        print(f"Found {len(pids)} process(es) using port {args.port}")
+
+        for pid in pids:
+            print(f"\nKilling PID {pid}...")
+            result = kill_process(pid)
+
+            if result.success:
+                print("Process terminated successfully.")
+            else:
+                print("Failed to terminate process.")
+
+            print(result.message)
