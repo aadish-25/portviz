@@ -159,4 +159,5 @@ coverage/
 *.tmp
 
 # portviz-specific
+.portviz/
 # (add any additional project-specific ignores as needed)
