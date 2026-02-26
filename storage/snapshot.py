@@ -53,3 +53,26 @@ def list_snapshots():
         })
 
     return snapshots
+
+def load_snapshot(filepath):
+    with open(filepath, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def diff_snapshots(file1, file2):
+    path1 = os.path.join(SNAPSHOT_DIR, file1)
+    path2 = os.path.join(SNAPSHOT_DIR, file2)
+
+    snap1 = load_snapshot(path1)
+    snap2 = load_snapshot(path2)
+
+    set1 = {(e["local_port"], e["pid"]) for e in snap1["entries"]}
+    set2 = {(e["local_port"], e["pid"]) for e in snap2["entries"]}
+
+    new_entries = set2 - set1
+    closed_entries = set1 - set2
+
+    return {
+        "new_entries": list(new_entries),
+        "closed_entries": list(closed_entries)
+    }
