@@ -28,3 +28,28 @@ def save_snapshot(entries: List[PortEntry]) -> str:
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(snapshot_data, f, indent=4)
     return filepath
+
+def list_snapshots():
+    if not os.path.exists(SNAPSHOT_DIR):
+        return []
+
+    files = sorted(os.listdir(SNAPSHOT_DIR))
+
+    snapshots = []
+
+    for file in files:
+        if not file.endswith(".json"):
+            continue
+
+        filepath = os.path.join(SNAPSHOT_DIR, file)
+
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        snapshots.append({
+            "filename": file,
+            "created_at": data.get("created_at"),
+            "entry_count": len(data.get("entries", []))
+        })
+
+    return snapshots
