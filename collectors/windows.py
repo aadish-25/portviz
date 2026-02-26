@@ -1,6 +1,6 @@
 import subprocess
 from typing import List
-from portviz.core.models import PortEntry
+from ..core.models import PortEntry
 
 
 def get_process_map():
