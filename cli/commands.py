@@ -8,7 +8,7 @@ from ..core.processors import (
 )
 from ..core.processors import filter_by_port
 from ..actions.process import kill_process
-from ..core.processors import filter_by_port
+from ..cli.json_utils import print_json
 
 
 def handle_command(args):
@@ -20,6 +20,10 @@ def handle_command(args):
         data = collect_port_data()
         summary = build_port_summary(data)
 
+        if args.json:
+            print_json(summary)
+            return
+
         print("---- Port Summary ----")
         print(f"Total Entries               : {summary.total_entries}")
         print(f"Listening Ports             : {summary.listening_count}")
@@ -29,6 +33,10 @@ def handle_command(args):
 
     elif args.command == "list":
         data = collect_port_data()
+
+        if args.json:
+            print_json(data)
+            return
 
         if args.public:
             ports = get_externally_accessible_listening_ports(data)
@@ -67,6 +75,10 @@ def handle_command(args):
         data = collect_port_data()
         results = filter_by_port(data, args.port_number)
 
+        if args.json:
+            print_json(results)
+            return
+
         if not results:
             print(f"No entries found for port {args.port_number}")
             return
@@ -90,6 +102,10 @@ def handle_command(args):
         if args.pid:
             result = kill_process(args.pid)
 
+            if args.json:
+                print_json(result)
+                return
+
             if result.success:
                 print("Process terminated successfully.")
             else:
@@ -102,6 +118,10 @@ def handle_command(args):
             entries = filter_by_port(data, args.port)
 
             if not entries:
+                if args.json:
+                    print_json([])
+                    return
+
                 print(f"No process found using port {args.port}")
                 return
 
@@ -110,15 +130,25 @@ def handle_command(args):
             for entry in entries:
                 pids.add(entry.pid)
 
-            print(f"Found {len(pids)} process(es) using port {args.port}")
+            results = []
+
+            if not args.json:
+                print(f"Found {len(pids)} process(es) using port {args.port}")
 
             for pid in pids:
-                print(f"\nKilling PID {pid}...")
                 result = kill_process(pid)
 
-                if result.success:
-                    print("Process terminated successfully.")
-                else:
-                    print("Failed to terminate process.")
+                results.append(
+                    {"pid": pid, "success": result.success, "message": result.message}
+                )
 
-                print(result.message)
+                if not args.json:
+                    print(f"\nKilling PID {pid}...")
+                    if result.success:
+                        print("Process terminated successfully.")
+                    else:
+                        print("Failed to terminate process.")
+                    print(result.message)
+
+            if args.json:
+                print_json(results)
