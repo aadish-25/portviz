@@ -35,7 +35,10 @@ def create_parser():
 
     # port command
     port_parser = subparsers.add_parser("port", help="Inspect a specific port")
-
     port_parser.add_argument("port_number", type=int, help="Port number to inspect")
+
+    # kill command
+    kill_parser = subparsers.add_parser("kill", help="Kill a process by PID")
+    kill_parser.add_argument("pid", type=int, help="Process ID to terminate")
 
     return parser

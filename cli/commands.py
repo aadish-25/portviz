@@ -7,6 +7,7 @@ from ..core.processors import (
     get_dual_stack_ports,
 )
 from ..core.processors import filter_by_port
+from ..actions.process import kill_process
 
 
 def handle_command(args):
@@ -61,25 +62,35 @@ def handle_command(args):
                         f"{entry.pid:<8}"
                     )
 
-        elif args.command == "port":
-            data = collect_port_data()
-            results = filter_by_port(data, args.port_number)
+    elif args.command == "port":
+        data = collect_port_data()
+        results = filter_by_port(data, args.port_number)
 
-            if not results:
-                print(f"No entries found for port {args.port_number}")
-                return
+        if not results:
+            print(f"No entries found for port {args.port_number}")
+            return
 
-            print(f"---- Details for Port {args.port_number} ----")
-            header = f"{'Protocol':<8} {'Local IP':<20} {'Foreign IP':<20} {'State':<15} {'Process':<25} {'PID':<8}"
-            print(header)
-            print("-" * len(header))
+        print(f"---- Details for Port {args.port_number} ----")
+        header = f"{'Protocol':<8} {'Local IP':<20} {'Foreign IP':<20} {'State':<15} {'Process':<25} {'PID':<8}"
+        print(header)
+        print("-" * len(header))
 
-            for entry in results:
-                print(
-                    f"{entry.protocol:<8} "
-                    f"{entry.local_ip:<20} "
-                    f"{entry.foreign_ip:<20} "
-                    f"{str(entry.state):<15} "
-                    f"{str(entry.process_name):<25} "
-                    f"{entry.pid:<8}"
-                )
+        for entry in results:
+            print(
+                f"{entry.protocol:<8} "
+                f"{entry.local_ip:<20} "
+                f"{entry.foreign_ip:<20} "
+                f"{str(entry.state):<15} "
+                f"{str(entry.process_name):<25} "
+                f"{entry.pid:<8}"
+            )
+
+    elif args.command == "kill":
+        result = kill_process(args.pid)
+
+        if result.success:
+            print("Process terminated successfully.")
+        else:
+            print("Failed to terminate process.")
+
+        print(result.message)
