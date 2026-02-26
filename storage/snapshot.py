@@ -66,13 +66,34 @@ def diff_snapshots(file1, file2):
     snap1 = load_snapshot(path1)
     snap2 = load_snapshot(path2)
 
-    set1 = {(e["local_port"], e["pid"]) for e in snap1["entries"]}
-    set2 = {(e["local_port"], e["pid"]) for e in snap2["entries"]}
+    # Only consider LISTENING entries
+    entries1 = [
+        e for e in snap1["entries"]
+        if e.get("state") == "LISTENING"
+    ]
 
-    new_entries = set2 - set1
-    closed_entries = set1 - set2
+    entries2 = [
+        e for e in snap2["entries"]
+        if e.get("state") == "LISTENING"
+    ]
+
+    set1 = {(e["local_port"], e["pid"]) for e in entries1}
+    set2 = {(e["local_port"], e["pid"]) for e in entries2}
+
+    new_keys = set2 - set1
+    closed_keys = set1 - set2
+
+    new_entries = [
+        e for e in entries2
+        if (e["local_port"], e["pid"]) in new_keys
+    ]
+
+    closed_entries = [
+        e for e in entries1
+        if (e["local_port"], e["pid"]) in closed_keys
+    ]
 
     return {
-        "new_entries": list(new_entries),
-        "closed_entries": list(closed_entries)
+        "new_listening": new_entries,
+        "closed_listening": closed_entries,
     }

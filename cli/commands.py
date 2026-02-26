@@ -198,9 +198,35 @@ def handle_command(args):
                 return
 
             print("---- Snapshot Diff ----")
-            print(f"Comparing {file1} → {file2}")
-            print("\nNew Entries:")
-            print(diff_result["new_entries"] or "None")
+            print(f"Comparing {file1} → {file2}\n")
 
-            print("\nClosed Entries:")
-            print(diff_result["closed_entries"] or "None")
+            new_services = diff_result["new_listening"]
+            closed_services = diff_result["closed_listening"]
+
+            if new_services:
+                print("🟢 New Listening Services:")
+                for e in new_services:
+                    print(
+                        f"  - Port {e['local_port']} | "
+                        f"PID {e['pid']} | "
+                        f"{e.get('process_name')} | "
+                        f"{e['protocol']} | "
+                        f"{e['local_ip']}"
+                    )
+            else:
+                print("🟢 New Listening Services: None")
+
+            print()
+
+            if closed_services:
+                print("🔴 Closed Listening Services:")
+                for e in closed_services:
+                    print(
+                        f"  - Port {e['local_port']} | "
+                        f"PID {e['pid']} | "
+                        f"{e.get('process_name')} | "
+                        f"{e['protocol']} | "
+                        f"{e['local_ip']}"
+                    )
+            else:
+                print("🔴 Closed Listening Services: None")
