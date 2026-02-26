@@ -10,7 +10,7 @@ def handle_command(args):
 
     elif args.command == "summary":
         data = collect_port_data()
-        summary = build_port_summary()
+        summary = build_port_summary(data)
 
         print("---- Port Summary ----")
         print(f"Total Entries               : {summary.total_entries}")
