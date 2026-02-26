@@ -10,6 +10,7 @@ from ..core.processors import filter_by_port
 from ..actions.process import kill_process
 from ..cli.json_utils import print_json
 from ..storage.snapshot import save_snapshot
+from ..storage.snapshot import list_snapshots
 
 def handle_command(args):
     if args.command == "report":
@@ -163,3 +164,18 @@ def handle_command(args):
                 return
 
             print(f"Snapshot saved to {filepath}")
+
+        elif args.snapshot_command == "list":
+            snapshots = list_snapshots()
+
+            if args.json:
+                print_json(snapshots)
+                return
+
+            if not snapshots:
+                print("No snapshots found.")
+                return
+
+            print("---- Saved Snapshots ----")
+            for snap in snapshots:
+                print(f"{snap['filename']} | {snap['created_at']} | {snap['entry_count']} entries")
