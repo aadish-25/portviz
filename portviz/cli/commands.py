@@ -2,7 +2,6 @@ import os
 import time
 import json
 from datetime import datetime
-from datetime import datetime
 from rich.live import Live
 from rich.table import Table
 from rich.console import Group
@@ -28,6 +27,11 @@ from ..storage.snapshot import diff_snapshots
 def handle_command(args):
     if args.command == "report":
         data = collect_port_data()
+
+        if args.json:
+            print_json(data)
+            return
+
         print_portviz_report(data)
 
     elif args.command == "summary":
