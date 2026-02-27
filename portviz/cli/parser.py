@@ -1,4 +1,5 @@
 import argparse
+from ..version import __version__
 
 
 def create_parser():
@@ -6,7 +7,14 @@ def create_parser():
         prog="portviz", description="Windows Port Inspection CLI Tool"
     )
 
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # ------------------ VERSION ------------------
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
 
     # ------------------ REPORT ------------------
     report_parser = subparsers.add_parser("report", help="Show full Portviz report")
@@ -70,7 +78,7 @@ def create_parser():
     # ------------------ SNAPSHOT ------------------
     snapshot_parser = subparsers.add_parser("snapshot", help="Manage port snapshots")
 
-    snapshot_subparsers = snapshot_parser.add_subparsers(dest="snapshot_command")
+    snapshot_subparsers = snapshot_parser.add_subparsers(dest="snapshot_command", required=True)
 
     # snapshot save
     snapshot_save = snapshot_subparsers.add_parser(
