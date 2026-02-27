@@ -61,4 +61,7 @@ def create_parser():
     diff_parser.add_argument("snapshot1", nargs="?", help="First snapshot filename")
     diff_parser.add_argument("snapshot2", nargs="?", help="Second snapshot filename")
 
+    # watch parser
+    subparsers.add_parser("watch", help="Watch for listening port changes in real-time")
+
     return parser
