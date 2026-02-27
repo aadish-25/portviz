@@ -1,3 +1,5 @@
+import time
+from datetime import datetime
 from ..services import collect_port_data
 from ..cli.formatter import print_portviz_report
 from ..core.summary import build_port_summary
@@ -239,3 +241,59 @@ def handle_command(args):
                     )
             else:
                 print("🔴 Closed Listening Services: None")
+
+    elif args.command == "watch":
+        print("Watching for listening service changes... Press Ctrl+C to stop.\n")
+
+        previous_state = None
+
+        try:
+            while True:
+                data = collect_port_data()
+
+                current_listening = {
+                    (e.local_port, e.pid): e
+                    for e in data
+                    if e.state == "LISTENING"
+                }
+
+                if previous_state is None:
+                    previous_state = current_listening
+                else:
+                    prev_keys = set(previous_state.keys())
+                    curr_keys = set(current_listening.keys())
+
+                    new_keys = curr_keys - prev_keys
+                    closed_keys = prev_keys - curr_keys
+
+                    if new_keys or closed_keys:
+                        print("\n========================================")
+                        print(f"Change detected at {datetime.now().strftime('%H:%M:%S')}")
+                        print("========================================\n")
+
+                        if new_keys:
+                            print("🟢 NEW SERVICES:")
+                            for key in new_keys:
+                                e = current_listening[key]
+                                print(
+                                    f"  Port {e.local_port} | PID {e.pid} | "
+                                    f"{e.process_name} | {e.protocol} | {e.local_ip}"
+                                )
+
+                        if closed_keys:
+                            print("\n🔴 CLOSED SERVICES:")
+                            for key in closed_keys:
+                                e = previous_state[key]
+                                print(
+                                    f"  Port {e.local_port} | PID {e.pid} | "
+                                    f"{e.process_name} | {e.protocol} | {e.local_ip}"
+                                )
+
+                        print()
+
+                    previous_state = current_listening
+
+                time.sleep(2)
+
+        except KeyboardInterrupt:
+            print("\nStopped watching.")
