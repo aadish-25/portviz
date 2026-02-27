@@ -6,19 +6,23 @@ def create_parser():
         prog="portviz", description="Windows Port Inspection CLI Tool"
     )
 
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command")
+
+    # ------------------ REPORT ------------------
+    report_parser = subparsers.add_parser("report", help="Show full Portviz report")
+    report_parser.add_argument(
         "--json", action="store_true", help="Output results in JSON format"
     )
 
-    subparsers = parser.add_subparsers(dest="command")
+    # ------------------ SUMMARY ------------------
+    summary_parser = subparsers.add_parser(
+        "summary", help="Show summarized port statistics"
+    )
+    summary_parser.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
 
-    # report command
-    subparsers.add_parser("report", help="Show full Portviz report")
-
-    # summary command
-    subparsers.add_parser("summary", help="Show summarized port statistics")
-
-    # list command and its flags
+    # ------------------ LIST ------------------
     list_parser = subparsers.add_parser("list", help="List listening ports")
 
     list_parser.add_argument(
@@ -37,31 +41,65 @@ def create_parser():
         help="Show dual-stack listening ports (IPv4 + IPv6)",
     )
 
-    # port command
+    list_parser.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
+
+    # ------------------ PORT ------------------
     port_parser = subparsers.add_parser("port", help="Inspect a specific port")
+
     port_parser.add_argument("port_number", type=int, help="Port number to inspect")
 
-    # kill command
+    port_parser.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
+
+    # ------------------ KILL ------------------
     kill_parser = subparsers.add_parser("kill", help="Kill a process by PID or by port")
 
     group = kill_parser.add_mutually_exclusive_group(required=True)
+
     group.add_argument("--pid", type=int, help="Process ID to terminate")
+
     group.add_argument("--port", type=int, help="Kill process(es) using this port")
 
-    # snapshot parser
+    kill_parser.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
+
+    # ------------------ SNAPSHOT ------------------
     snapshot_parser = subparsers.add_parser("snapshot", help="Manage port snapshots")
 
     snapshot_subparsers = snapshot_parser.add_subparsers(dest="snapshot_command")
 
-    snapshot_subparsers.add_parser("save", help="Save current port state as snapshot")
-    snapshot_subparsers.add_parser("list", help="List saved snapshots")
+    # snapshot save
+    snapshot_save = snapshot_subparsers.add_parser(
+        "save", help="Save current port state as snapshot"
+    )
+    snapshot_save.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
+
+    # snapshot list
+    snapshot_list = snapshot_subparsers.add_parser("list", help="List saved snapshots")
+    snapshot_list.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
+
+    # snapshot diff
     diff_parser = snapshot_subparsers.add_parser(
         "diff", help="Diff two snapshots (default: last two)"
     )
+
     diff_parser.add_argument("snapshot1", nargs="?", help="First snapshot filename")
+
     diff_parser.add_argument("snapshot2", nargs="?", help="Second snapshot filename")
 
-    # watch parser
+    diff_parser.add_argument(
+        "--json", action="store_true", help="Output results in JSON format"
+    )
+
+    # ------------------ WATCH ------------------
     watch_parser = subparsers.add_parser(
         "watch", help="Watch for listening service changes in real-time"
     )
@@ -70,6 +108,10 @@ def create_parser():
         "--stream",
         action="store_true",
         help="Use event stream mode instead of dashboard",
+    )
+
+    watch_parser.add_argument(
+        "--json", action="store_true", help="Output in JSON format (stream mode only)"
     )
 
     return parser
