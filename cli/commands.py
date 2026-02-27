@@ -1,10 +1,10 @@
 import os
 import time
+import json
 from datetime import datetime
-from colorama import Fore, Style, init
+from datetime import datetime
 from rich.live import Live
 from rich.table import Table
-from rich.panel import Panel
 from rich.console import Group
 from rich.text import Text
 from rich import box
@@ -255,6 +255,7 @@ def handle_command(args):
                 print("🔴 Closed Listening Services: None")
 
     elif args.command == "watch":
+
         previous_state = {}
         recent_events = deque(maxlen=5)
 
@@ -286,27 +287,26 @@ def handle_command(args):
             if recent_events:
                 events_table = Table(box=box.SIMPLE)
                 events_table.add_column("Recent Changes (last 5)", style="bold")
-
                 for event in recent_events:
                     events_table.add_row(event)
-
                 return Group(header, table, events_table)
 
             return Group(header, table)
 
         try:
-            with Live(refresh_per_second=2) as live:
+            # ---- STREAM MODE ----
+            if args.stream:
                 while True:
                     data = collect_port_data()
 
                     current_listening = {
-                        (e.local_port, e.pid): e for e in data if e.state == "LISTENING"
+                        (e.local_port, e.pid): e
+                        for e in data
+                        if e.state == "LISTENING"
                     }
 
-                    # First run: establish baseline without events
                     if not previous_state:
                         previous_state = current_listening
-                        live.update(build_dashboard(current_listening))
                         time.sleep(2)
                         continue
 
@@ -316,23 +316,85 @@ def handle_command(args):
                     new_keys = curr_keys - prev_keys
                     closed_keys = prev_keys - curr_keys
 
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+
                     for key in new_keys:
                         e = current_listening[key]
-                        recent_events.appendleft(
-                            f"[green]+ Port {e.local_port} | {e.process_name}[/green]"
-                        )
+
+                        if args.json:
+                            print(json.dumps({
+                                "event": "service_started",
+                                "timestamp": timestamp,
+                                "port": e.local_port,
+                                "pid": e.pid,
+                                "process": e.process_name,
+                                "protocol": e.protocol,
+                                "ip": e.local_ip
+                            }))
+                        else:
+                            print(f"[{timestamp}] + Port {e.local_port} | {e.process_name}")
 
                     for key in closed_keys:
                         e = previous_state[key]
-                        recent_events.appendleft(
-                            f"[red]- Port {e.local_port} | {e.process_name}[/red]"
-                        )
+
+                        if args.json:
+                            print(json.dumps({
+                                "event": "service_stopped",
+                                "timestamp": timestamp,
+                                "port": e.local_port,
+                                "pid": e.pid,
+                                "process": e.process_name,
+                                "protocol": e.protocol,
+                                "ip": e.local_ip
+                            }))
+                        else:
+                            print(f"[{timestamp}] - Port {e.local_port} | {e.process_name}")
 
                     previous_state = current_listening
-
-                    live.update(build_dashboard(current_listening))
-
                     time.sleep(2)
 
+            # ---- DASHBOARD MODE ----
+            else:
+                with Live(refresh_per_second=2) as live:
+                    while True:
+                        data = collect_port_data()
+
+                        current_listening = {
+                            (e.local_port, e.pid): e
+                            for e in data
+                            if e.state == "LISTENING"
+                        }
+
+                        if not previous_state:
+                            previous_state = current_listening
+                            live.update(build_dashboard(current_listening))
+                            time.sleep(2)
+                            continue
+
+                        prev_keys = set(previous_state.keys())
+                        curr_keys = set(current_listening.keys())
+
+                        new_keys = curr_keys - prev_keys
+                        closed_keys = prev_keys - curr_keys
+
+                        timestamp = datetime.now().strftime("%H:%M:%S")
+
+                        for key in new_keys:
+                            e = current_listening[key]
+                            recent_events.appendleft(
+                                f"[green][{timestamp}] + Port {e.local_port} | {e.process_name}[/green]"
+                            )
+
+                        for key in closed_keys:
+                            e = previous_state[key]
+                            recent_events.appendleft(
+                                f"[red][{timestamp}] - Port {e.local_port} | {e.process_name}[/red]"
+                            )
+
+                        previous_state = current_listening
+                        live.update(build_dashboard(current_listening))
+                        time.sleep(2)
+
         except KeyboardInterrupt:
-            print("\nStopped watching.")
+            if not args.json:
+                print("\nStopped watching.")
