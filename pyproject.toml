@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portviz"
+dynamic = ["version"]
+description = "Windows-based real-time port inspection CLI tool"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Aadish Sonawane" }
+]
+requires-python = ">=3.9"
+
+dependencies = [
+    "rich>=13.0.0",
+    "platformdirs>=3.0.0"
+]
+
+keywords = [
+    "ports",
+    "network",
+    "cli",
+    "windows",
+    "monitoring",
+    "netstat",
+    "inspection"
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: Microsoft :: Windows",
+    "License :: OSI Approved :: MIT License",
+    "Environment :: Console",
+    "Topic :: System :: Networking",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/portviz"
+Repository = "https://github.com/yourusername/portviz"
+
+[project.scripts]
+portviz = "portviz.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["portviz*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "portviz.version.__version__" }
