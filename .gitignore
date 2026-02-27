@@ -161,3 +161,30 @@ coverage/
 # portviz-specific
 .portviz/
 # (add any additional project-specific ignores as needed)
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Local runtime data
+.portviz/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
