@@ -7,7 +7,7 @@ def create_parser():
         prog="portviz", description="Windows Port Inspection CLI Tool"
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
 
     # ------------------ VERSION ------------------
     parser.add_argument(
