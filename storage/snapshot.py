@@ -4,8 +4,14 @@ from datetime import datetime
 from dataclasses import asdict
 from typing import List
 from ..core.models import PortEntry
+from platformdirs import user_data_dir
 
-SNAPSHOT_DIR = ".portviz/snapshot"
+# Get proper OS-specific user data directory
+BASE_DIR = user_data_dir("portviz", appauthor=False)
+SNAPSHOT_DIR = os.path.join(BASE_DIR, "snapshots")
+
+# Ensure directory exists
+os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
 def ensure_snapshot_directory():
     os.makedirs(SNAPSHOT_DIR, exist_ok=True)
