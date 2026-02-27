@@ -1,5 +1,14 @@
+import os
 import time
 from datetime import datetime
+from colorama import Fore, Style, init
+from rich.live import Live
+from rich.table import Table
+from rich.panel import Panel
+from rich.console import Group
+from rich.text import Text
+from rich import box
+from collections import deque
 from ..services import collect_port_data
 from ..cli.formatter import print_portviz_report
 from ..core.summary import build_port_summary
@@ -14,6 +23,7 @@ from ..cli.json_utils import print_json
 from ..storage.snapshot import save_snapshot
 from ..storage.snapshot import list_snapshots
 from ..storage.snapshot import diff_snapshots
+
 
 def handle_command(args):
     if args.command == "report":
@@ -181,7 +191,9 @@ def handle_command(args):
 
             print("---- Saved Snapshots ----")
             for snap in snapshots:
-                print(f"{snap['filename']} | {snap['created_at']} | {snap['entry_count']} entries")
+                print(
+                    f"{snap['filename']} | {snap['created_at']} | {snap['entry_count']} entries"
+                )
 
         elif args.snapshot_command == "diff":
             snapshots = list_snapshots()
@@ -243,57 +255,84 @@ def handle_command(args):
                 print("🔴 Closed Listening Services: None")
 
     elif args.command == "watch":
-        print("Watching for listening service changes... Press Ctrl+C to stop.\n")
+        previous_state = {}
+        recent_events = deque(maxlen=5)
 
-        previous_state = None
+        def build_dashboard(current_listening):
+            table = Table(box=box.SIMPLE_HEAVY)
+            table.add_column("Port", style="cyan", justify="right")
+            table.add_column("PID", style="magenta", justify="right")
+            table.add_column("Process", style="white")
+            table.add_column("Proto", style="green")
+            table.add_column("IP", style="yellow")
+
+            for e in current_listening.values():
+                table.add_row(
+                    str(e.local_port),
+                    str(e.pid),
+                    str(e.process_name),
+                    e.protocol,
+                    e.local_ip,
+                )
+
+            header = Text()
+            header.append("PORTVIZ LIVE MONITOR\n", style="bold bright_white")
+            header.append(
+                f"Last Updated: {datetime.now().strftime('%H:%M:%S')} | "
+                f"Active Services: {len(current_listening)}",
+                style="dim",
+            )
+
+            if recent_events:
+                events_table = Table(box=box.SIMPLE)
+                events_table.add_column("Recent Changes (last 5)", style="bold")
+
+                for event in recent_events:
+                    events_table.add_row(event)
+
+                return Group(header, table, events_table)
+
+            return Group(header, table)
 
         try:
-            while True:
-                data = collect_port_data()
+            with Live(refresh_per_second=2) as live:
+                while True:
+                    data = collect_port_data()
 
-                current_listening = {
-                    (e.local_port, e.pid): e
-                    for e in data
-                    if e.state == "LISTENING"
-                }
+                    current_listening = {
+                        (e.local_port, e.pid): e for e in data if e.state == "LISTENING"
+                    }
 
-                if previous_state is None:
-                    previous_state = current_listening
-                else:
+                    # First run: establish baseline without events
+                    if not previous_state:
+                        previous_state = current_listening
+                        live.update(build_dashboard(current_listening))
+                        time.sleep(2)
+                        continue
+
                     prev_keys = set(previous_state.keys())
                     curr_keys = set(current_listening.keys())
 
                     new_keys = curr_keys - prev_keys
                     closed_keys = prev_keys - curr_keys
 
-                    if new_keys or closed_keys:
-                        print("\n========================================")
-                        print(f"Change detected at {datetime.now().strftime('%H:%M:%S')}")
-                        print("========================================\n")
+                    for key in new_keys:
+                        e = current_listening[key]
+                        recent_events.appendleft(
+                            f"[green]+ Port {e.local_port} | {e.process_name}[/green]"
+                        )
 
-                        if new_keys:
-                            print("🟢 NEW SERVICES:")
-                            for key in new_keys:
-                                e = current_listening[key]
-                                print(
-                                    f"  Port {e.local_port} | PID {e.pid} | "
-                                    f"{e.process_name} | {e.protocol} | {e.local_ip}"
-                                )
-
-                        if closed_keys:
-                            print("\n🔴 CLOSED SERVICES:")
-                            for key in closed_keys:
-                                e = previous_state[key]
-                                print(
-                                    f"  Port {e.local_port} | PID {e.pid} | "
-                                    f"{e.process_name} | {e.protocol} | {e.local_ip}"
-                                )
-
-                        print()
+                    for key in closed_keys:
+                        e = previous_state[key]
+                        recent_events.appendleft(
+                            f"[red]- Port {e.local_port} | {e.process_name}[/red]"
+                        )
 
                     previous_state = current_listening
 
-                time.sleep(2)
+                    live.update(build_dashboard(current_listening))
+
+                    time.sleep(2)
 
         except KeyboardInterrupt:
             print("\nStopped watching.")
