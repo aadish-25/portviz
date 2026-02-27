@@ -15,7 +15,8 @@ requires-python = ">=3.9"
 
 dependencies = [
     "rich>=13.0.0",
-    "platformdirs>=3.0.0"
+    "platformdirs>=3.0.0",
+    "pyfiglet>=0.8"
 ]
 
 keywords = [
