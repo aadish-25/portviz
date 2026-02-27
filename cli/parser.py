@@ -62,6 +62,14 @@ def create_parser():
     diff_parser.add_argument("snapshot2", nargs="?", help="Second snapshot filename")
 
     # watch parser
-    subparsers.add_parser("watch", help="Watch for listening port changes in real-time")
+    watch_parser = subparsers.add_parser(
+        "watch", help="Watch for listening service changes in real-time"
+    )
+
+    watch_parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Use event stream mode instead of dashboard",
+    )
 
     return parser
