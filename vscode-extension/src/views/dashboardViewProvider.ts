@@ -233,28 +233,51 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private _detectFramework(port: PortEntry, processName: string): string | undefined {
     const pn = (processName ?? '').toLowerCase();
     const p = port.local_port;
-    if (p === 3000) {
-      if (pn.includes('next')) { return 'Next.js'; }
-      if (pn.includes('node') || pn.includes('npm')) { return 'React'; }
-      return 'Node';
-    }
-    if (p === 5173 || p === 5174) { return 'Vite'; }
-    if (p === 8080) {
-      if (pn.includes('vite')) { return 'Vite Preview'; }
-      if (pn.includes('java')) { return 'Java'; }
-      return 'Backend';
-    }
-    if (p === 8000) {
-      if (pn.includes('python') || pn.includes('uvicorn') || pn.includes('gunicorn')) { return 'Python'; }
-      return 'Backend';
-    }
+
+    // ── PRIORITY 1: Detect by process name (ground truth) ──
+    if (pn.includes('next')) { return 'Next.js'; }
+    if (pn.includes('vite')) { return 'Vite'; }
+    if (pn.includes('angular')) { return 'Angular'; }
+    if (pn.includes('uvicorn') || pn.includes('gunicorn')) { return 'Python'; }
+    if (pn.includes('flask')) { return 'Flask'; }
+    if (pn.includes('django')) { return 'Django'; }
+    if (pn.includes('deno')) { return 'Deno'; }
+    if (pn.includes('bun')) { return 'Bun'; }
+    if (pn.includes('nginx')) { return 'Nginx'; }
+    if (pn.includes('apache') || pn.includes('httpd')) { return 'Apache'; }
+    if (pn.includes('docker')) { return 'Docker'; }
+    if (pn.includes('postgres')) { return 'PostgreSQL'; }
+    if (pn.includes('mysql')) { return 'MySQL'; }
+    if (pn.includes('mongod')) { return 'MongoDB'; }
+    if (pn.includes('redis') || pn.includes('memurai')) { return 'Redis'; }
+    if (pn.includes('elastic') || pn.includes('opensearch')) { return 'Elasticsearch'; }
+    if (pn.includes('rabbit')) { return 'RabbitMQ'; }
+    if (pn.includes('sonar')) { return 'SonarQube'; }
+    if (pn.includes('dotnet')) { return '.NET'; }
+    if (pn.includes('ruby') || pn.includes('rails') || pn.includes('puma')) { return 'Ruby'; }
+    if (pn.includes('php')) { return 'PHP'; }
+    if (pn.includes('java') || pn.includes('gradle') || pn.includes('maven')) { return 'Java'; }
+    if (pn.includes('python')) { return 'Python'; }
+    if (pn.includes('node') || pn.includes('npm') || pn.includes('npx')) { return 'Node'; }
+    if (pn.includes('go') && !pn.includes('google')) { return 'Go'; }
+
+    // ── PRIORITY 2: Fallback by port number (convention) ──
+    if (p === 3000 || p === 3001) { return 'Dev Server'; }
+    if (p === 4000) { return 'Backend'; }
     if (p === 4200) { return 'Angular'; }
-    if (p === 3001) { return 'Dev Server'; }
-    if (p === 8443 || p === 443) { return 'HTTPS'; }
-    if (p === 5432) { return 'PostgreSQL'; }
+    if (p === 5000) { return 'Backend'; }
+    if (p === 5173 || p === 5174) { return 'Vite'; }
+    if (p === 8000 || p === 8080) { return 'Backend'; }
+    if (p === 8888) { return 'Jupyter'; }
+    if (p === 9000) { return 'Backend'; }
+    if (p === 9229) { return 'Node Debug'; }
+    if (p === 443 || p === 8443) { return 'HTTPS'; }
+    if (p === 1433) { return 'MSSQL'; }
     if (p === 3306) { return 'MySQL'; }
+    if (p === 5432) { return 'PostgreSQL'; }
     if (p === 6379) { return 'Redis'; }
     if (p === 27017) { return 'MongoDB'; }
+
     return undefined;
   }
 
