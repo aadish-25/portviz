@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import { PortEntry } from '../types/report';
-export declare class PortsViewProvider implements vscode.TreeDataProvider<PortEntry> {
+import { PortNode } from '../models/portNode';
+export declare class PortsViewProvider implements vscode.TreeDataProvider<PortNode> {
     private _onDidChangeTreeData;
     readonly onDidChangeTreeData: vscode.Event<void>;
-    private ports;
+    private groups;
     setPorts(data: PortEntry[]): void;
-    getTreeItem(element: PortEntry): vscode.TreeItem;
-    getChildren(): Thenable<PortEntry[]>;
+    getTreeItem(element: PortNode): vscode.TreeItem;
+    getChildren(element?: PortNode): Thenable<PortNode[]>;
 }
 //# sourceMappingURL=portsViewProvider.d.ts.map

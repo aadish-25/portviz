@@ -8,9 +8,7 @@
   },
   "icon": "media/port.svg",
   "main": "./out/extension.js",
-  "activationEvents": [
-    "onCommand:portviz.showReport"
-  ],
+  "activationEvents": [],
   "contributes": {
     "commands": [
       {
@@ -27,7 +25,19 @@
       },
       {
         "command": "portviz.kill",
-        "title": "Kill Process"
+        "title": "Kill Process",
+        "icon": {
+          "light": "media/kill.svg",
+          "dark": "media/kill.svg"
+        }
+      },
+      {
+        "command": "portviz.openInBrowser",
+        "title": "Open in Browser",
+        "icon": {
+          "light": "media/open.svg",
+          "dark": "media/open.svg"
+        }
       }
     ],
     "viewsContainers": {
@@ -36,30 +46,6 @@
           "id": "portviz",
           "title": "Portviz",
           "icon": "media/port.svg"
-        }
-      ]
-    },
-    "views": {
-      "portviz": [
-        {
-          "id": "portviz.portsView",
-          "name": "Listening Ports"
-        }
-      ]
-    },
-    "menus": {
-      "view/title": [
-        {
-          "command": "portviz.refresh",
-          "when": "view == portviz.portsView",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "portviz.kill",
-          "when": "view == portviz.portsView",
-          "group": "inline"
         }
       ]
     }
