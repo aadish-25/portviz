@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
-import { DashboardViewProvider } from './views/dashboardViewProvider';
+import { LiveViewProvider } from './views/liveViewProvider';
 
 export function activate(context: vscode.ExtensionContext) {
-  const dashboardProvider = new DashboardViewProvider(context.extensionUri);
+  const liveProvider = new LiveViewProvider(context.extensionUri);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
-      DashboardViewProvider.viewType,
-      dashboardProvider,
+      LiveViewProvider.viewType,
+      liveProvider,
       { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
@@ -15,13 +15,13 @@ export function activate(context: vscode.ExtensionContext) {
   // Refresh command (also accessible from command palette)
   context.subscriptions.push(
     vscode.commands.registerCommand('portviz.refresh', async () => {
-      await dashboardProvider.refresh();
+      await liveProvider.refresh();
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('portviz.showReport', async () => {
-      await dashboardProvider.refresh();
+      await liveProvider.refresh();
     })
   );
 }

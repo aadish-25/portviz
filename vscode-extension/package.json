@@ -9,7 +9,7 @@
   "icon": "media/port.svg",
   "main": "./out/extension.js",
   "activationEvents": [
-    "onView:portviz.dashboard"
+    "onView:portviz.live"
   ],
   "contributes": {
     "commands": [
@@ -55,8 +55,8 @@
       "portviz": [
         {
           "type": "webview",
-          "id": "portviz.dashboard",
-          "name": "Overview"
+          "id": "portviz.live",
+          "name": "Live"
         }
       ]
     }

@@ -16,9 +16,9 @@ interface FilterState {
 
 type SortMode = 'name' | 'pid' | 'ports';
 
-export class DashboardViewProvider implements vscode.WebviewViewProvider {
+export class LiveViewProvider implements vscode.WebviewViewProvider {
 
-  public static readonly viewType = 'portviz.dashboard';
+  public static readonly viewType = 'portviz.live';
 
   private _view?: vscode.WebviewView;
   private _rawData: PortEntry[] = [];
