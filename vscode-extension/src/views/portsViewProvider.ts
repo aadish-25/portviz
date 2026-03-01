@@ -27,6 +27,15 @@ export class PortsViewProvider implements vscode.TreeDataProvider<PortNode> {
     }
 
     this.groups = Array.from(map.values());
+    this.groups.sort((a, b) => {
+      const aSystem = a.name.toLowerCase().includes('system');
+      const bSystem = b.name.toLowerCase().includes('system');
+
+      if (aSystem && !bSystem) return 1;
+      if (!aSystem && bSystem) return -1;
+
+      return a.name.localeCompare(b.name);
+    });
     this._onDidChangeTreeData.fire();
   }
 
@@ -53,21 +62,36 @@ export class PortsViewProvider implements vscode.TreeDataProvider<PortNode> {
     const isPublic = port.local_ip === '0.0.0.0';
     const isLocal = port.local_ip === '127.0.0.1';
 
-    const item = new vscode.TreeItem(
-      `${port.local_port}  •  ${isLocal ? 'Localhost' : port.local_ip}  •  ${port.protocol}`,
+    const label = new vscode.TreeItem(
+      `${port.local_port}`,
       vscode.TreeItemCollapsibleState.None
     );
 
-    item.iconPath = new vscode.ThemeIcon(
+    // Neon icon coloring
+    label.iconPath = new vscode.ThemeIcon(
       'plug',
-      new vscode.ThemeColor(isPublic ? 'charts.orange' : 'charts.green')
+      new vscode.ThemeColor(
+        isPublic ? 'charts.orange' : 'charts.green'
+      )
     );
 
+    // Description line (clean secondary text)
+    label.description = `${isLocal ? 'Localhost' : port.local_ip} • ${port.protocol}`;
+
+    // Tooltip (detailed)
+    label.tooltip =
+      `Port: ${port.local_port}\n` +
+      `Process: ${port.process_name ?? 'Unknown'}\n` +
+      `PID: ${port.pid}\n` +
+      `Address: ${port.local_ip}\n` +
+      `Protocol: ${port.protocol}\n` +
+      `State: ${port.state}`;
+
     if (isPublic) {
-      item.description = 'Public';
+      label.description += ' • Public';
     }
 
-    return item;
+    return label;
   }
 
   getChildren(element?: PortNode): Thenable<PortNode[]> {
