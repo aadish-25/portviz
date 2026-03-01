@@ -491,7 +491,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           .process-header {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
           }
 
           .process-chevron {
@@ -517,6 +517,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           .process-info {
             display: flex;
             flex-direction: column;
+            flex: 1;
             min-width: 0;
           }
 
@@ -536,15 +537,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           }
 
           .process-actions {
-            margin-left: auto;
             display: flex;
+            align-items: center;
             gap: 4px;
             flex-shrink: 0;
           }
 
           /* ── PORT ROW ── */
           .port-list {
-            padding-left: 36px;
+            padding-left: 30px;
             overflow: hidden;
             max-height: 2000px;
             transition: max-height 0.15s ease;
@@ -552,9 +553,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           .port-row {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            padding: 4px 10px 4px 0;
+            padding: 3px 0;
             border-radius: 4px;
           }
 
@@ -565,7 +565,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           .port-left {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
+            flex: 1;
             min-width: 0;
           }
 
@@ -602,10 +603,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           .port-right {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
             flex-shrink: 0;
-            min-width: 30px;
-            justify-content: flex-end;
           }
 
           /* ── ACTION BUTTONS ── */
