@@ -7,7 +7,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       DashboardViewProvider.viewType,
-      dashboardProvider
+      dashboardProvider,
+      { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
 

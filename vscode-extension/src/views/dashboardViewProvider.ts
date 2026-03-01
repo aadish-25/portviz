@@ -382,8 +382,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           /* Toggle Switch */
           .toggle-switch {
             position: relative;
+            display: block;
             width: 32px;
             height: 16px;
+            cursor: pointer;
           }
 
           .toggle-switch input {
@@ -705,34 +707,34 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           <!-- CONTROLS BAR -->
           <div class="controls-bar">
             <div class="toggle-group">
-              <div class="toggle-switch">
+              <label class="toggle-switch">
                 <input type="checkbox" id="filter-hide-system" checked />
                 <span class="toggle-slider"></span>
-              </div>
+              </label>
               <label for="filter-hide-system">Hide System</label>
             </div>
             <div class="toggle-group">
-              <div class="toggle-switch">
+              <label class="toggle-switch">
                 <input type="checkbox" id="filter-public-only" />
                 <span class="toggle-slider"></span>
-              </div>
+              </label>
               <label for="filter-public-only">Public Only</label>
             </div>
             <div class="toggle-group">
-              <div class="toggle-switch">
+              <label class="toggle-switch">
                 <input type="checkbox" id="filter-show-udp" />
                 <span class="toggle-slider"></span>
-              </div>
+              </label>
               <label for="filter-show-udp">Show UDP</label>
             </div>
 
             <div class="controls-separator"></div>
 
             <div class="toggle-group">
-              <div class="toggle-switch">
+              <label class="toggle-switch">
                 <input type="checkbox" id="toggle-auto-refresh" />
                 <span class="toggle-slider"></span>
-              </div>
+              </label>
               <label for="toggle-auto-refresh">Auto (5s)</label>
             </div>
 
