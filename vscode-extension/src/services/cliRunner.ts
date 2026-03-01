@@ -59,4 +59,55 @@ export class CliRunner {
       });
     });
   }
+
+  killProcess(pid: number): Promise<CliResult<any>> {
+    return new Promise((resolve) => {
+      const process = spawn('portviz', ['kill', '--pid', String(pid), '--json']);
+
+      let stdoutData = '';
+      let stderrData = '';
+
+      process.stdout.on('data', (chunk: Buffer) => {
+        stdoutData += chunk.toString();
+      });
+
+      process.stderr.on('data', (chunk: Buffer) => {
+        stderrData += chunk.toString();
+      });
+
+      process.on('error', (err: Error) => {
+        resolve({
+          success: false,
+          error: `Failed to start Portviz CLI: ${err.message}`,
+          exitCode: -1
+        });
+      });
+
+      process.on('close', (code: number | null) => {
+        if (code !== 0) {
+          resolve({
+            success: false,
+            error: stderrData || 'Kill command failed.',
+            exitCode: code ?? -1
+          });
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(stdoutData);
+          resolve({
+            success: true,
+            data: parsed,
+            exitCode: code ?? 0
+          });
+        } catch (err: any) {
+          resolve({
+            success: false,
+            error: `Invalid JSON from kill command: ${err.message}`,
+            exitCode: code ?? -1
+          });
+        }
+      });
+    });
+  }
 }

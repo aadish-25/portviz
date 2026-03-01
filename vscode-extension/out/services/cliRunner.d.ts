@@ -7,5 +7,6 @@ export interface CliResult<T> {
 }
 export declare class CliRunner {
     runReport(): Promise<CliResult<PortvizReport>>;
+    killProcess(pid: number): Promise<CliResult<any>>;
 }
 //# sourceMappingURL=cliRunner.d.ts.map

@@ -61,6 +61,27 @@ function activate(context) {
         await loadPorts(portsProvider);
     });
     context.subscriptions.push(refreshCommand);
+    const killCommand = vscode.commands.registerCommand('portviz.kill', async (port) => {
+        if (!port)
+            return;
+        const isSystemProcess = port.process_name?.toLowerCase().includes('system') ||
+            port.pid === 0;
+        const confirmMessage = isSystemProcess
+            ? `⚠️ You are about to kill a system process (PID ${port.pid}). This may destabilize your system.\n\nContinue?`
+            : `Kill process ${port.process_name ?? 'Unknown'} (PID ${port.pid})?`;
+        const confirmation = await vscode.window.showWarningMessage(confirmMessage, { modal: true }, 'Yes');
+        if (confirmation !== 'Yes')
+            return;
+        const runner = new cliRunner_1.CliRunner();
+        const result = await runner.killProcess(port.pid);
+        if (!result.success) {
+            vscode.window.showErrorMessage(result.error ?? 'Kill failed');
+            return;
+        }
+        vscode.window.showInformationMessage(`Process ${port.pid} terminated`);
+        await loadPorts(portsProvider);
+    });
+    context.subscriptions.push(killCommand);
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map
