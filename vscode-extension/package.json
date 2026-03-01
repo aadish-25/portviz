@@ -9,7 +9,10 @@
   "icon": "media/port.svg",
   "main": "./out/extension.js",
   "activationEvents": [
-    "onView:portviz.live"
+    "onView:portviz.overview",
+    "onView:portviz.live",
+    "onView:portviz.snapshots",
+    "onView:portviz.orchestration"
   ],
   "contributes": {
     "commands": [
@@ -55,8 +58,23 @@
       "portviz": [
         {
           "type": "webview",
+          "id": "portviz.overview",
+          "name": "Overview"
+        },
+        {
+          "type": "webview",
           "id": "portviz.live",
           "name": "Live"
+        },
+        {
+          "type": "webview",
+          "id": "portviz.snapshots",
+          "name": "Snapshots"
+        },
+        {
+          "type": "webview",
+          "id": "portviz.orchestration",
+          "name": "Orchestration"
         }
       ]
     }
