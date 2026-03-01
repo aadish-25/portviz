@@ -8,7 +8,9 @@
   },
   "icon": "media/port.svg",
   "main": "./out/extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:portviz.dashboard"
+  ],
   "contributes": {
     "commands": [
       {
@@ -46,6 +48,15 @@
           "id": "portviz",
           "title": "Portviz",
           "icon": "media/port.svg"
+        }
+      ]
+    },
+    "views": {
+      "portviz": [
+        {
+          "type": "webview",
+          "id": "portviz.dashboard",
+          "name": "Overview"
         }
       ]
     }
