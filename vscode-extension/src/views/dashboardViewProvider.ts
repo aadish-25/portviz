@@ -1,10 +1,26 @@
 import * as vscode from 'vscode';
+import { CliRunner } from '../services/cliRunner';
+import { PortEntry } from '../types/report';
+
+interface ProcessGroup {
+  name: string;
+  pid: number;
+  ports: PortEntry[];
+}
+
+interface FilterState {
+  hideSystem: boolean;
+  publicOnly: boolean;
+  showUdp: boolean;
+}
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   public static readonly viewType = 'portviz.dashboard';
 
   private _view?: vscode.WebviewView;
+  private _rawData: PortEntry[] = [];
+  private _filters: FilterState = { hideSystem: true, publicOnly: false, showUdp: false };
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -21,41 +37,142 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     };
 
     webviewView.webview.html = this._getHtml();
+
+    // Handle messages from webview
+    webviewView.webview.onDidReceiveMessage(async (msg) => {
+      switch (msg.type) {
+        case 'refresh':
+          await this.refresh();
+          break;
+
+        case 'kill':
+          await this._handleKill(msg.pid);
+          break;
+
+        case 'open':
+          this._handleOpen(msg.port, msg.ip);
+          break;
+
+        case 'filterChange':
+          this._filters = msg.filters;
+          this._sendFilteredData();
+          break;
+      }
+    });
+
+    // Auto-load on view open
+    this.refresh();
   }
 
-  private _getHtml(): string {
-    const mockData = JSON.stringify([
-      {
-        name: 'node.exe',
-        pid: 1234,
-        ports: [
-          { local_port: 3000, local_ip: '127.0.0.1', protocol: 'TCP', state: 'LISTENING' },
-          { local_port: 4000, local_ip: '0.0.0.0', protocol: 'TCP', state: 'LISTENING' }
-        ]
-      },
-      {
-        name: 'python.exe',
-        pid: 5678,
-        ports: [
-          { local_port: 5000, local_ip: '127.0.0.1', protocol: 'TCP', state: 'LISTENING' }
-        ]
-      },
-      {
-        name: 'vite.exe',
-        pid: 9876,
-        ports: [
-          { local_port: 5173, local_ip: '127.0.0.1', protocol: 'TCP', state: 'LISTENING' }
-        ]
-      },
-      {
-        name: 'System',
-        pid: 4,
-        ports: [
-          { local_port: 135, local_ip: '0.0.0.0', protocol: 'TCP', state: 'LISTENING' }
-        ]
-      }
-    ]);
+  /** Fetch data from CLI and push to webview */
+  public async refresh(): Promise<void> {
+    const runner = new CliRunner();
+    const result = await runner.runReport();
 
+    if (!result.success || !result.data) {
+      vscode.window.showErrorMessage(result.error ?? 'Failed to load Portviz data');
+      return;
+    }
+
+    this._rawData = result.data;
+    this._sendFilteredData();
+  }
+
+  /** Apply filters and send grouped data to webview */
+  private _sendFilteredData(): void {
+    if (!this._view) { return; }
+
+    let filtered = [...this._rawData];
+
+    // Base filter: only LISTENING + TCP (unless showUdp)
+    filtered = filtered.filter(p => {
+      if (p.protocol === 'UDP') {
+        return this._filters.showUdp;
+      }
+      return p.protocol === 'TCP' && p.state === 'LISTENING';
+    });
+
+    // Hide System
+    if (this._filters.hideSystem) {
+      filtered = filtered.filter(p => {
+        const name = (p.process_name ?? '').toLowerCase();
+        return !name.includes('system') && p.pid !== 0 && p.pid !== 4;
+      });
+    }
+
+    // Public Only
+    if (this._filters.publicOnly) {
+      filtered = filtered.filter(p => p.local_ip === '0.0.0.0');
+    }
+
+    // Group by process
+    const groups = this._groupByProcess(filtered);
+
+    this._view.webview.postMessage({ type: 'update', data: groups });
+  }
+
+  private _groupByProcess(entries: PortEntry[]): ProcessGroup[] {
+    const map = new Map<string, ProcessGroup>();
+
+    for (const entry of entries) {
+      const key = `${entry.process_name ?? 'Unknown'}-${entry.pid}`;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          name: entry.process_name ?? 'Unknown',
+          pid: entry.pid,
+          ports: []
+        });
+      }
+
+      map.get(key)!.ports.push(entry);
+    }
+
+    const groups = Array.from(map.values());
+
+    // Sort: system processes to the bottom
+    groups.sort((a, b) => {
+      const aSystem = a.name.toLowerCase().includes('system');
+      const bSystem = b.name.toLowerCase().includes('system');
+      if (aSystem && !bSystem) { return 1; }
+      if (!aSystem && bSystem) { return -1; }
+      return a.name.localeCompare(b.name);
+    });
+
+    return groups;
+  }
+
+  private async _handleKill(pid: number): Promise<void> {
+    const confirmation = await vscode.window.showWarningMessage(
+      `Kill process with PID ${pid}?`,
+      { modal: true },
+      'Yes'
+    );
+
+    if (confirmation !== 'Yes') { return; }
+
+    const runner = new CliRunner();
+    const result = await runner.killProcess(pid);
+
+    if (!result.success) {
+      vscode.window.showErrorMessage(result.error ?? 'Kill failed');
+      return;
+    }
+
+    vscode.window.showInformationMessage(`Process ${pid} terminated`);
+    await this.refresh();
+  }
+
+  private _handleOpen(port: number, ip: string): void {
+    const url = `http://localhost:${port}`;
+    vscode.env.openExternal(vscode.Uri.parse(url));
+  }
+
+  // ─────────────────────────────────────────────
+  // HTML
+  // ─────────────────────────────────────────────
+
+  private _getHtml(): string {
     return /* html */ `
       <!DOCTYPE html>
       <html lang="en">
@@ -113,6 +230,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           .btn-icon:hover {
             background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+          }
+
+          .btn-icon.spinning {
+            animation: spin 0.8s linear infinite;
+          }
+
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
           }
 
           /* ── FILTER BAR ── */
@@ -187,6 +313,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             padding: 6px 0;
           }
 
+          /* ── LOADING ── */
+          .loading-state {
+            text-align: center;
+            padding: 40px 14px;
+            color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+          }
+
           /* ── PROCESS ROW ── */
           .process-row {
             padding: 8px 14px;
@@ -241,7 +374,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           .port-list {
             padding-left: 36px;
             overflow: hidden;
-            transition: max-height 0.2s ease;
           }
 
           .port-row {
@@ -388,7 +520,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         </div>
 
         <!-- CONTENT -->
-        <div class="content" id="content"></div>
+        <div class="content" id="content">
+          <div class="loading-state">Loading…</div>
+        </div>
 
         <!-- FOOTER -->
         <div class="footer" id="footer"></div>
@@ -399,11 +533,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           const PORT_COLORS = ['port-green', 'port-blue', 'port-purple', 'port-orange', 'port-cyan'];
 
           let expandedPids = new Set();
-
-          // ── Mock data (Phase 3 only) ──
-          const mockData = ${mockData};
+          let currentData = [];
 
           function render(data) {
+            currentData = data;
             const content = document.getElementById('content');
             const footer = document.getElementById('footer');
 
@@ -462,7 +595,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             content.innerHTML = html;
             footer.textContent = data.length + ' process' + (data.length !== 1 ? 'es' : '') + ' \\u2022 ' + totalPorts + ' listening port' + (totalPorts !== 1 ? 's' : '');
 
-            // Bind toggle events
+            bindEvents();
+          }
+
+          function bindEvents() {
+            // Toggle expand/collapse
             document.querySelectorAll('.process-header').forEach(el => {
               el.addEventListener('click', () => {
                 const pid = Number(el.dataset.pid);
@@ -471,11 +608,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                 } else {
                   expandedPids.add(pid);
                 }
-                render(data);
+                render(currentData);
               });
             });
 
-            // Bind kill events
+            // Kill buttons
             document.querySelectorAll('[data-kill-pid]').forEach(el => {
               el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -483,7 +620,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
               });
             });
 
-            // Bind open events
+            // Open buttons
             document.querySelectorAll('[data-open-port]').forEach(el => {
               el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -504,7 +641,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           // ── Refresh button ──
           document.getElementById('btn-refresh').addEventListener('click', () => {
+            const btn = document.getElementById('btn-refresh');
+            btn.classList.add('spinning');
             vscode.postMessage({ type: 'refresh' });
+            setTimeout(() => btn.classList.remove('spinning'), 1000);
           });
 
           // ── Filter toggles ──
@@ -530,10 +670,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
               render(msg.data);
             }
           });
-
-          // ── Initial render with mock data ──
-          expandedPids.add(1234);
-          render(mockData);
         </script>
       </body>
       </html>

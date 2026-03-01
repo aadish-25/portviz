@@ -10,6 +10,19 @@ export function activate(context: vscode.ExtensionContext) {
       dashboardProvider
     )
   );
+
+  // Refresh command (also accessible from command palette)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('portviz.refresh', async () => {
+      await dashboardProvider.refresh();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('portviz.showReport', async () => {
+      await dashboardProvider.refresh();
+    })
+  );
 }
 
 export function deactivate() { }
