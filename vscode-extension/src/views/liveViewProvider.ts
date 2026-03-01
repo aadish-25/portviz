@@ -5,7 +5,7 @@ import { PortEntry } from '../types/report';
 interface ProcessGroup {
   name: string;
   pid: number;
-  ports: PortEntry[];
+  ports: (PortEntry & { frameworkHint?: string })[];
 }
 
 interface FilterState {
@@ -161,6 +161,13 @@ export class LiveViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
+    // Attach framework hints to each port in each group
+    for (const g of groups) {
+      for (const p of g.ports) {
+        (p as any).frameworkHint = this._detectFramework(p, g.name);
+      }
+    }
+
     this._view.webview.postMessage({
       type: 'update',
       data: groups,
@@ -171,6 +178,54 @@ export class LiveViewProvider implements vscode.WebviewViewProvider {
         publicPorts: publicCountAll
       }
     });
+  }
+
+  /** Detect common dev frameworks by port + process name */
+  private _detectFramework(port: PortEntry, processName: string): string | undefined {
+    const pn = (processName ?? '').toLowerCase();
+    const p = port.local_port;
+
+    if (p === 3000) {
+      if (pn.includes('next')) { return 'Next.js'; }
+      if (pn.includes('node') || pn.includes('npm')) { return 'React'; }
+      return 'Node';
+    }
+    if (p === 5173 || p === 5174) {
+      return 'Vite';
+    }
+    if (p === 8080) {
+      if (pn.includes('vite')) { return 'Vite Preview'; }
+      if (pn.includes('java')) { return 'Java'; }
+      return 'Backend';
+    }
+    if (p === 8000) {
+      if (pn.includes('python') || pn.includes('uvicorn') || pn.includes('gunicorn')) {
+        return 'Python';
+      }
+      return 'Backend';
+    }
+    if (p === 4200) {
+      return 'Angular';
+    }
+    if (p === 3001) {
+      return 'Dev Server';
+    }
+    if (p === 8443 || p === 443) {
+      return 'HTTPS';
+    }
+    if (p === 5432) {
+      return 'PostgreSQL';
+    }
+    if (p === 3306) {
+      return 'MySQL';
+    }
+    if (p === 6379) {
+      return 'Redis';
+    }
+    if (p === 27017) {
+      return 'MongoDB';
+    }
+    return undefined;
   }
 
   private _groupByProcess(entries: PortEntry[]): ProcessGroup[] {
@@ -703,6 +758,18 @@ export class LiveViewProvider implements vscode.WebviewViewProvider {
           .process-row.highlight-fade {
             background: transparent;
           }
+
+          /* ── FRAMEWORK HINT BADGE ── */
+          .badge-framework {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 999px;
+            background: rgba(66, 165, 245, 0.12);
+            color: #42a5f5;
+            border: 1px solid rgba(66, 165, 245, 0.2);
+            white-space: nowrap;
+          }
         </style>
       </head>
       <body>
@@ -841,6 +908,9 @@ export class LiveViewProvider implements vscode.WebviewViewProvider {
                   html += '<span class="port-detail">\u00B7 ' + address + ' \u00B7 ' + port.protocol + '</span>';
                   if (isPublic) {
                     html += '<span class="badge-public">\u{1F310} Public</span>';
+                  }
+                  if (port.frameworkHint) {
+                    html += '<span class="badge-framework">' + escapeHtml(port.frameworkHint) + '</span>';
                   }
                   html += '</div>';
                   html += '<div class="port-right">';
