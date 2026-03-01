@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { CliRunner } from './services/cliRunner';
 import { PortsViewProvider } from './views/portsViewProvider';
-import { PortEntry } from './types/report';
+import { ProcessGroup } from "./models/portNode"
+import { PortNode } from './models/portNode';
 
 async function loadPorts(portsProvider: PortsViewProvider) {
   const runner = new CliRunner();
@@ -52,16 +53,20 @@ export function activate(context: vscode.ExtensionContext) {
 
   const killCommand = vscode.commands.registerCommand(
     'portviz.kill',
-    async (port: PortEntry) => {
-      if (!port) return;
+    async (node: ProcessGroup) => {
+
+      if (!node || node.type !== 'process') return;
+
+      const pid = node.pid;
+      const processName = node.name;
 
       const isSystemProcess =
-        port.process_name?.toLowerCase().includes('system') ||
-        port.pid === 0;
+        processName.toLowerCase().includes('system') ||
+        pid === 0;
 
       const confirmMessage = isSystemProcess
-        ? `You are about to kill a system process (PID ${port.pid}). This may destabilize your system.\n\nContinue?`
-        : `Kill process ${port.process_name ?? 'Unknown'} (PID ${port.pid})?`;
+        ? `You are about to kill a system process (PID ${pid}). This may destabilize your system.\n\nContinue?`
+        : `Kill process ${processName} (PID ${pid})?`;
 
       const confirmation = await vscode.window.showWarningMessage(
         confirmMessage,
@@ -72,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (confirmation !== 'Yes') return;
 
       const runner = new CliRunner();
-      const result = await runner.killProcess(port.pid);
+      const result = await runner.killProcess(pid);
 
       if (!result.success) {
         vscode.window.showErrorMessage(result.error ?? 'Kill failed');
@@ -80,7 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       vscode.window.showInformationMessage(
-        `Process ${port.pid} terminated`
+        `Process ${pid} terminated`
       );
 
       await loadPorts(portsProvider);
@@ -88,6 +93,31 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(killCommand);
+
+  const openCommand = vscode.commands.registerCommand(
+    'portviz.openInBrowser',
+    async (node: PortNode) => {
+
+      if (!node || node.type !== 'port') return;
+
+      const port = node.entry;
+
+      if (port.protocol !== 'TCP') return;
+
+      const isPublic = port.local_ip === '0.0.0.0';
+      const isLocal = port.local_ip === '127.0.0.1';
+
+      if (!isPublic && !isLocal) return;
+
+      const url = isPublic
+        ? `http://localhost:${port.local_port}`
+        : `http://localhost:${port.local_port}`;
+
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+    }
+  );
+
+  context.subscriptions.push(openCommand);
 }
 
 export function deactivate() { }
