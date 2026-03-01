@@ -234,8 +234,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    vscode.window.showInformationMessage(`Process ${name} (PID ${pid}) terminated`);
+    // Refresh and verify the process is actually gone
     await this.refresh();
+
+    const stillAlive = this._rawData.some(p => p.pid === pid);
+    if (stillAlive) {
+      vscode.window.showWarningMessage(
+        `${name} (PID ${pid}) may be a Windows service that auto-restarts, or requires elevated privileges to kill.`
+      );
+    } else {
+      vscode.window.showInformationMessage(`Process ${name} (PID ${pid}) terminated`);
+    }
   }
 
   private _handleOpen(port: number, _ip: string): void {
