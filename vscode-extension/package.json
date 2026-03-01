@@ -6,9 +6,10 @@
   "engines": {
     "vscode": "^1.80.0"
   },
+  "icon": "media/port.svg",
   "main": "./out/extension.js",
   "activationEvents": [
-    "*"
+    "onCommand:portviz.showReport"
   ],
   "contributes": {
   "commands": [

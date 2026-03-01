@@ -1,27 +1,37 @@
 import * as vscode from 'vscode';
 import { CliRunner } from './services/cliRunner';
+import { PortsViewProvider } from './views/portsViewProvider';
 
 export function activate(context: vscode.ExtensionContext) {
+  const portsProvider = new PortsViewProvider();
+
+  vscode.window.registerTreeDataProvider(
+    'portviz.portsView',
+    portsProvider
+  );
+
   const command = vscode.commands.registerCommand(
     'portviz.showReport',
     async () => {
-      const outputChannel = vscode.window.createOutputChannel('Portviz');
-      outputChannel.clear();
-      outputChannel.show(true);
-
       const runner = new CliRunner();
       const result = await runner.runReport();
 
-      if (!result.success) {
-        outputChannel.appendLine(`Error: ${result.error}`);
+      if (!result.success || !result.data) {
+        vscode.window.showErrorMessage(
+          result.error ?? 'Unknown error'
+        );
         return;
       }
 
-      outputChannel.appendLine(JSON.stringify(result.data, null, 2));
+      const listening = result.data.filter(
+        p => p.protocol === 'TCP' && p.state === 'LISTENING'
+      );
+
+      portsProvider.setPorts(listening);
     }
   );
 
   context.subscriptions.push(command);
 }
 
-export function deactivate() {}
+export function deactivate() { }
