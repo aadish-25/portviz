@@ -147,13 +147,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       .map(g => g.pid);
     this._previousPids = currentPids;
 
-    // Count public ports
-    let publicCount = 0;
-    let totalPorts = 0;
-    for (const g of groups) {
+    // Summary from raw data (unfiltered) — always shows overall picture
+    const allListening = this._rawData.filter(p =>
+      (p.protocol === 'TCP' && p.state === 'LISTENING') || p.protocol === 'UDP'
+    );
+    const allGroups = this._groupByProcess(allListening);
+    let totalPortsAll = 0;
+    let publicCountAll = 0;
+    for (const g of allGroups) {
       for (const p of g.ports) {
-        totalPorts++;
-        if (p.local_ip === '0.0.0.0') { publicCount++; }
+        totalPortsAll++;
+        if (p.local_ip === '0.0.0.0') { publicCountAll++; }
       }
     }
 
@@ -162,9 +166,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       data: groups,
       newPids,
       summary: {
-        processes: groups.length,
-        ports: totalPorts,
-        publicPorts: publicCount
+        processes: allGroups.length,
+        ports: totalPortsAll,
+        publicPorts: publicCountAll
       }
     });
   }
@@ -457,7 +461,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           /* ── SCROLLABLE CONTENT ── */
           .content {
             flex: 1;
-            overflow-y: auto;
+            overflow-y: scroll;
             padding: 6px 0;
           }
 
@@ -533,6 +537,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           .port-list {
             padding-left: 36px;
             overflow: hidden;
+            max-height: 2000px;
+            transition: max-height 0.15s ease;
           }
 
           .port-row {
@@ -587,7 +593,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           .port-right {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
             flex-shrink: 0;
             min-width: 30px;
             justify-content: flex-end;
@@ -655,19 +661,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             background: var(--vscode-sideBar-background, var(--vscode-editor-background));
           }
 
-          /* ── COLOR PALETTE ── */
-          .dot-green  { background: #66bb6a; }
-          .dot-blue   { background: #42a5f5; }
-          .dot-purple { background: #ab47bc; }
-          .dot-orange { background: #ffa726; }
-          .dot-cyan   { background: #26c6da; }
-          .dot-red    { background: #ef5350; }
+          /* ── SEMANTIC COLORS ── */
+          /* Process dots: based on exposure */
+          .dot-green  { background: #66bb6a; } /* all localhost */
+          .dot-orange { background: #ffa726; } /* has public port */
+          .dot-purple { background: #ab47bc; } /* UDP only */
+          .dot-gray   { background: #9e9e9e; } /* system */
 
-          .port-green  { color: #66bb6a; }
-          .port-orange { color: #ffa726; }
-          .port-cyan   { color: #26c6da; }
-          .port-blue   { color: #42a5f5; }
-          .port-purple { color: #ab47bc; }
+          /* Port numbers: based on type */
+          .port-local  { color: #66bb6a; } /* localhost */
+          .port-public { color: #ffa726; } /* public / 0.0.0.0 */
+          .port-udp    { color: #ab47bc; } /* UDP */
+          .port-other  { color: #42a5f5; } /* fallback */
 
           /* ── EMPTY STATE ── */
           .empty-state {
@@ -735,12 +740,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                 <input type="checkbox" id="toggle-auto-refresh" />
                 <span class="toggle-slider"></span>
               </label>
-              <label for="toggle-auto-refresh">Auto (5s)</label>
+              <label for="toggle-auto-refresh">Auto Refresh (5s)</label>
             </div>
 
             <div class="controls-separator"></div>
 
-            <span class="sort-label">Sort:</span>
+            <span class="sort-label">Sort by:</span>
             <select class="sort-select" id="sort-mode">
               <option value="name">Name</option>
               <option value="pid">PID</option>
@@ -759,8 +764,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
         <script>
           const vscode = acquireVsCodeApi();
-          const PROCESS_COLORS = ['dot-green', 'dot-blue', 'dot-purple', 'dot-orange', 'dot-cyan', 'dot-red'];
-          const PORT_COLORS = ['port-green', 'port-blue', 'port-purple', 'port-orange', 'port-cyan'];
+
+          // Semantic color: process dot based on exposure
+          function getProcessDotClass(proc) {
+            const name = proc.name.toLowerCase();
+            if (name.includes('system') || proc.pid === 0 || proc.pid === 4) return 'dot-gray';
+            const hasPublic = proc.ports.some(p => p.local_ip === '0.0.0.0');
+            if (hasPublic) return 'dot-orange';
+            const allUdp = proc.ports.every(p => p.protocol === 'UDP');
+            if (allUdp) return 'dot-purple';
+            return 'dot-green';
+          }
+
+          // Semantic color: port number based on type
+          function getPortColorClass(port) {
+            if (port.protocol === 'UDP') return 'port-udp';
+            if (port.local_ip === '0.0.0.0') return 'port-public';
+            if (port.local_ip === '127.0.0.1' || port.local_ip === '::1') return 'port-local';
+            return 'port-other';
+          }
 
           let expandedPids = new Set();
           let currentData = [];
@@ -780,8 +802,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             let html = '';
 
             data.forEach((proc, i) => {
-              const colorClass = PROCESS_COLORS[i % PROCESS_COLORS.length];
-              const portColorClass = PORT_COLORS[i % PORT_COLORS.length];
+              const dotClass = getProcessDotClass(proc);
               const isOpen = expandedPids.has(proc.pid);
               const portCount = proc.ports.length;
               const isNew = newPidSet.has(proc.pid);
@@ -789,7 +810,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
               html += '<div class="process-row' + (isNew ? ' highlight' : '') + '" data-row-pid="' + proc.pid + '">';
               html += '<div class="process-header" data-pid="' + proc.pid + '">';
               html += '<span class="process-chevron ' + (isOpen ? 'open' : '') + '">\u25B6</span>';
-              html += '<span class="process-dot ' + colorClass + '"></span>';
+              html += '<span class="process-dot ' + dotClass + '"></span>';
               html += '<div class="process-info">';
               html += '<span class="process-name">' + escapeHtml(proc.name) + '</span>';
               html += '<span class="process-meta">' + portCount + ' port' + (portCount !== 1 ? 's' : '') + ' \u00B7 PID ' + proc.pid + '</span>';
@@ -805,9 +826,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                   const isPublic = port.local_ip === '0.0.0.0';
                   const address = isPublic ? '0.0.0.0' : 'Localhost';
                   html += '<div class="port-row">';
+                  const pColor = getPortColorClass(port);
                   html += '<div class="port-left">';
                   html += '<span class="port-icon">\u{1F4E6}</span>';
-                  html += '<span class="port-number ' + portColorClass + '">' + port.local_port + '</span>';
+                  html += '<span class="port-number ' + pColor + '">' + port.local_port + '</span>';
                   html += '<span class="port-detail">\u00B7 ' + address + ' \u00B7 ' + port.protocol + '</span>';
                   if (isPublic) {
                     html += '<span class="badge-public">\u{1F310} Public</span>';
