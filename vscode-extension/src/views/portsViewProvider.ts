@@ -13,8 +13,22 @@ export class PortsViewProvider implements vscode.TreeDataProvider<PortEntry> {
   }
 
   getTreeItem(element: PortEntry): vscode.TreeItem {
-    const label = `${element.local_port} • ${element.process_name ?? 'Unknown'} (PID ${element.pid})`;
-    return new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+    const item = new vscode.TreeItem(
+      `${element.local_port} • ${element.process_name ?? 'Unknown'} (PID ${element.pid})`,
+      vscode.TreeItemCollapsibleState.None
+    );
+
+    item.description = element.local_ip;
+    item.tooltip =
+      `Protocol: ${element.protocol}\n` +
+      `Local: ${element.local_ip}:${element.local_port}\n` +
+      `State: ${element.state}\n` +
+      `PID: ${element.pid}\n` +
+      `Process: ${element.process_name ?? 'Unknown'}`;
+
+    item.iconPath = new vscode.ThemeIcon('plug');
+
+    return item;
   }
 
   getChildren(): Thenable<PortEntry[]> {
