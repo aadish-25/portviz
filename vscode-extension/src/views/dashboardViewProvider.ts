@@ -622,6 +622,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             color: #ef5350;
           }
 
+          /* ── INLINE SVG ICONS ── */
+          .icon-svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            pointer-events: none;
+          }
+
+          .icon-svg.icon-fill {
+            fill: currentColor;
+            stroke: none;
+          }
+
+          .btn-icon .icon-svg {
+            width: 16px;
+            height: 16px;
+          }
+
           /* ── FOOTER ── */
           .footer {
             flex-shrink: 0;
@@ -677,7 +698,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           <div class="top-bar">
             <span class="top-bar-title">PORT<span class="accent">VIZ</span></span>
             <div class="top-bar-actions">
-              <button class="btn-icon" id="btn-refresh" title="Refresh">&#x21bb;</button>
+              <button class="btn-icon" id="btn-refresh" title="Refresh"><svg class="icon-svg icon-fill" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19.146 4.854l-1.489 1.489A8 8 0 1 0 12 20a8.094 8.094 0 0 0 7.371-4.886 1 1 0 1 0-1.842-.779A6.071 6.071 0 0 1 12 18a6 6 0 1 1 4.243-10.243l-1.39 1.39a.5.5 0 0 0 .354.854H19.5A.5.5 0 0 0 20 9.5V5.207a.5.5 0 0 0-.854-.353z"/></svg></button>
             </div>
           </div>
 
@@ -772,7 +793,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
               html += '<span class="process-meta">' + portCount + ' port' + (portCount !== 1 ? 's' : '') + ' \u00B7 PID ' + proc.pid + '</span>';
               html += '</div>';
               html += '<div class="process-actions">';
-              html += '<button class="btn-action kill-btn" data-kill-pid="' + proc.pid + '" data-kill-name="' + escapeHtml(proc.name) + '" data-kill-ports="' + portCount + '" title="Kill Process">\u2716</button>';
+              html += '<button class="btn-action kill-btn" data-kill-pid="' + proc.pid + '" data-kill-name="' + escapeHtml(proc.name) + '" data-kill-ports="' + portCount + '" title="Kill Process"><svg class="icon-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6H21"/><path d="M8 6V4C8 3.448 8.448 3 9 3H15C15.552 3 16 3.448 16 4V6"/><path d="M19 6L18.2 19C18.138 19.877 17.406 20.5 16.526 20.5H7.474C6.594 20.5 5.862 19.877 5.8 19L5 6"/><path d="M10 11V17"/><path d="M14 11V17"/></svg></button>';
               html += '</div>';
               html += '</div>';
 
@@ -792,7 +813,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                   html += '</div>';
                   html += '<div class="port-right">';
                   if (port.protocol === 'TCP') {
-                    html += '<button class="btn-action open-btn" data-open-port="' + port.local_port + '" data-open-ip="' + port.local_ip + '" title="Open in Browser">\u2197</button>';
+                    html += '<button class="btn-action open-btn" data-open-port="' + port.local_port + '" data-open-ip="' + port.local_ip + '" title="Open in Browser"><svg class="icon-svg icon-fill" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h5V3H3v7h2V5zm0 14h14V9h2v12H3V9h2v10z"/></svg></button>';
                   }
                   html += '</div>';
                   html += '</div>';
