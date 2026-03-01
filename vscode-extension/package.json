@@ -1,18 +1,47 @@
 {
-  "name": "vscode-extension",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "portviz",
+  "displayName": "Portviz",
+  "description": "Port & Process Inspector for Developers",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+  "commands": [
+    {
+      "command": "portviz.showReport",
+      "title": "Portviz: Show Report"
+    }
+  ],
+  "viewsContainers": {
+    "activitybar": [
+      {
+        "id": "portviz",
+        "title": "Portviz",
+        "icon": "media/port.svg"
+      }
+    ]
+  },
+  "views": {
+    "portviz": [
+      {
+        "id": "portviz.portsView",
+        "name": "Listening Ports"
+      }
+    ]
+  }
+},
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
   "devDependencies": {
-    "@types/node": "^25.3.3",
-    "@types/vscode": "^1.109.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
   }
 }
