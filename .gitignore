@@ -135,6 +135,8 @@ Desktop.ini
 $RECYCLE.BIN/
 #   VS Code extensions
 .vscode/
+vscode-extension/node_modules/
+vscode-extension/out/
 
 # Visual Studio Code
 .vscode/
