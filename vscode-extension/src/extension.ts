@@ -39,6 +39,15 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(command);
+
+  const refreshCommand = vscode.commands.registerCommand(
+    'portviz.refresh',
+    async () => {
+      await loadPorts(portsProvider);
+    }
+  );
+
+  context.subscriptions.push(refreshCommand);
 }
 
-export function deactivate() {}
+export function deactivate() { }

@@ -12,30 +12,47 @@
     "onCommand:portviz.showReport"
   ],
   "contributes": {
-  "commands": [
-    {
-      "command": "portviz.showReport",
-      "title": "Portviz: Show Report"
+    "commands": [
+      {
+        "command": "portviz.showReport",
+        "title": "Portviz: Show Report"
+      },
+      {
+        "command": "portviz.refresh",
+        "title": "Refresh",
+        "icon": {
+          "light": "media/refresh.svg",
+          "dark": "media/refresh.svg"
+        }
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "portviz",
+          "title": "Portviz",
+          "icon": "media/port.svg"
+        }
+      ]
+    },
+    "views": {
+      "portviz": [
+        {
+          "id": "portviz.portsView",
+          "name": "Listening Ports"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "portviz.refresh",
+          "when": "view == portviz.portsView",
+          "group": "navigation"
+        }
+      ]
     }
-  ],
-  "viewsContainers": {
-    "activitybar": [
-      {
-        "id": "portviz",
-        "title": "Portviz",
-        "icon": "media/port.svg"
-      }
-    ]
   },
-  "views": {
-    "portviz": [
-      {
-        "id": "portviz.portsView",
-        "name": "Listening Ports"
-      }
-    ]
-  }
-},
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"

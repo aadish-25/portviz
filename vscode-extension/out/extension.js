@@ -38,20 +38,29 @@ exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const cliRunner_1 = require("./services/cliRunner");
 const portsViewProvider_1 = require("./views/portsViewProvider");
+async function loadPorts(portsProvider) {
+    const runner = new cliRunner_1.CliRunner();
+    const result = await runner.runReport();
+    if (!result.success || !result.data) {
+        vscode.window.showErrorMessage(result.error ?? 'Failed to load Portviz data');
+        return;
+    }
+    const listening = result.data.filter(p => p.protocol === 'TCP' && p.state === 'LISTENING');
+    portsProvider.setPorts(listening);
+}
 function activate(context) {
     const portsProvider = new portsViewProvider_1.PortsViewProvider();
     vscode.window.registerTreeDataProvider('portviz.portsView', portsProvider);
+    // Auto load on activation
+    loadPorts(portsProvider);
     const command = vscode.commands.registerCommand('portviz.showReport', async () => {
-        const runner = new cliRunner_1.CliRunner();
-        const result = await runner.runReport();
-        if (!result.success || !result.data) {
-            vscode.window.showErrorMessage(result.error ?? 'Unknown error');
-            return;
-        }
-        const listening = result.data.filter(p => p.protocol === 'TCP' && p.state === 'LISTENING');
-        portsProvider.setPorts(listening);
+        await loadPorts(portsProvider);
     });
     context.subscriptions.push(command);
+    const refreshCommand = vscode.commands.registerCommand('portviz.refresh', async () => {
+        await loadPorts(portsProvider);
+    });
+    context.subscriptions.push(refreshCommand);
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map
