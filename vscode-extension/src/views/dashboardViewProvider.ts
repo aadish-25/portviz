@@ -14,6 +14,8 @@ interface FilterState {
   showUdp: boolean;
 }
 
+type SortMode = 'name' | 'pid' | 'ports';
+
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   public static readonly viewType = 'portviz.dashboard';
@@ -21,6 +23,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _rawData: PortEntry[] = [];
   private _filters: FilterState = { hideSystem: true, publicOnly: false, showUdp: false };
+  private _sortMode: SortMode = 'name';
+  private _autoRefreshInterval?: ReturnType<typeof setInterval>;
+  private _previousPids: Set<number> = new Set();
+  private _isRefreshing = false;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -46,7 +52,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           break;
 
         case 'kill':
-          await this._handleKill(msg.pid);
+          await this._handleKill(msg.pid, msg.processName, msg.portCount);
           break;
 
         case 'open':
@@ -57,7 +63,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           this._filters = msg.filters;
           this._sendFilteredData();
           break;
+
+        case 'sortChange':
+          this._sortMode = msg.sort;
+          this._sendFilteredData();
+          break;
+
+        case 'autoRefreshChange':
+          this._handleAutoRefresh(msg.enabled);
+          break;
       }
+    });
+
+    // Clean up auto-refresh when view is disposed
+    webviewView.onDidDispose(() => {
+      this._clearAutoRefresh();
     });
 
     // Auto-load on view open
@@ -66,8 +86,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   /** Fetch data from CLI and push to webview */
   public async refresh(): Promise<void> {
+    if (this._isRefreshing) { return; }
+    this._isRefreshing = true;
+
+    // Signal loading state to webview
+    this._view?.webview.postMessage({ type: 'loadingStart' });
+
     const runner = new CliRunner();
     const result = await runner.runReport();
+
+    this._isRefreshing = false;
+    this._view?.webview.postMessage({ type: 'loadingEnd' });
 
     if (!result.success || !result.data) {
       vscode.window.showErrorMessage(result.error ?? 'Failed to load Portviz data');
@@ -78,7 +107,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this._sendFilteredData();
   }
 
-  /** Apply filters and send grouped data to webview */
+  /** Apply filters, sort, and send grouped data to webview */
   private _sendFilteredData(): void {
     if (!this._view) { return; }
 
@@ -108,7 +137,36 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     // Group by process
     const groups = this._groupByProcess(filtered);
 
-    this._view.webview.postMessage({ type: 'update', data: groups });
+    // Sort
+    this._sortGroups(groups);
+
+    // Detect new PIDs
+    const currentPids = new Set(groups.map(g => g.pid));
+    const newPids = groups
+      .filter(g => !this._previousPids.has(g.pid))
+      .map(g => g.pid);
+    this._previousPids = currentPids;
+
+    // Count public ports
+    let publicCount = 0;
+    let totalPorts = 0;
+    for (const g of groups) {
+      for (const p of g.ports) {
+        totalPorts++;
+        if (p.local_ip === '0.0.0.0') { publicCount++; }
+      }
+    }
+
+    this._view.webview.postMessage({
+      type: 'update',
+      data: groups,
+      newPids,
+      summary: {
+        processes: groups.length,
+        ports: totalPorts,
+        publicPorts: publicCount
+      }
+    });
   }
 
   private _groupByProcess(entries: PortEntry[]): ProcessGroup[] {
@@ -128,23 +186,36 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       map.get(key)!.ports.push(entry);
     }
 
-    const groups = Array.from(map.values());
+    return Array.from(map.values());
+  }
 
-    // Sort: system processes to the bottom
+  private _sortGroups(groups: ProcessGroup[]): void {
     groups.sort((a, b) => {
+      // System processes always at the bottom
       const aSystem = a.name.toLowerCase().includes('system');
       const bSystem = b.name.toLowerCase().includes('system');
       if (aSystem && !bSystem) { return 1; }
       if (!aSystem && bSystem) { return -1; }
-      return a.name.localeCompare(b.name);
-    });
 
-    return groups;
+      switch (this._sortMode) {
+        case 'pid':
+          return a.pid - b.pid;
+        case 'ports':
+          return b.ports.length - a.ports.length;
+        case 'name':
+        default:
+          return a.name.localeCompare(b.name);
+      }
+    });
   }
 
-  private async _handleKill(pid: number): Promise<void> {
+  private async _handleKill(pid: number, processName?: string, portCount?: number): Promise<void> {
+    const name = processName || `PID ${pid}`;
+    const portInfo = portCount && portCount > 1 ? ` (${portCount} active ports)` : '';
+    const confirmMessage = `Kill ${name}${portInfo}?`;
+
     const confirmation = await vscode.window.showWarningMessage(
-      `Kill process with PID ${pid}?`,
+      confirmMessage,
       { modal: true },
       'Yes'
     );
@@ -159,13 +230,29 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    vscode.window.showInformationMessage(`Process ${pid} terminated`);
+    vscode.window.showInformationMessage(`Process ${name} (PID ${pid}) terminated`);
     await this.refresh();
   }
 
-  private _handleOpen(port: number, ip: string): void {
+  private _handleOpen(port: number, _ip: string): void {
     const url = `http://localhost:${port}`;
     vscode.env.openExternal(vscode.Uri.parse(url));
+  }
+
+  private _handleAutoRefresh(enabled: boolean): void {
+    this._clearAutoRefresh();
+    if (enabled) {
+      this._autoRefreshInterval = setInterval(() => {
+        this.refresh();
+      }, 5000);
+    }
+  }
+
+  private _clearAutoRefresh(): void {
+    if (this._autoRefreshInterval) {
+      clearInterval(this._autoRefreshInterval);
+      this._autoRefreshInterval = undefined as any;
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -184,13 +271,29 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           /* ── RESET ── */
           * { margin: 0; padding: 0; box-sizing: border-box; }
 
+          html, body {
+            height: 100%;
+            overflow: hidden;
+          }
+
           body {
             font-family: var(--vscode-font-family, 'Segoe UI', sans-serif);
-            font-size: var(--vscode-font-size, 13px);
+            font-size: calc(var(--vscode-font-size, 13px) + 1px);
             color: var(--vscode-editor-foreground);
             background: transparent;
             padding: 0;
             line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+          }
+
+          /* ── STICKY HEADER ── */
+          .header-sticky {
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: var(--vscode-sideBar-background, var(--vscode-editor-background));
           }
 
           /* ── TOP BAR ── */
@@ -203,7 +306,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           }
 
           .top-bar-title {
-            font-size: 14px;
+            font-size: 15px;
             font-weight: 700;
             letter-spacing: 2px;
             color: var(--vscode-editor-foreground);
@@ -211,6 +314,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           .top-bar-title .accent {
             color: #4fc3f7;
+          }
+
+          .top-bar-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
           }
 
           .btn-icon {
@@ -225,11 +334,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             align-items: center;
             justify-content: center;
             font-size: 14px;
-            transition: background 0.15s;
+            transition: background 0.15s, opacity 0.15s;
           }
 
           .btn-icon:hover {
             background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+          }
+
+          .btn-icon:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
           }
 
           .btn-icon.spinning {
@@ -241,11 +355,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             to { transform: rotate(360deg); }
           }
 
-          /* ── FILTER BAR ── */
-          .filter-bar {
+          /* ── CONTROLS BAR (Filters + Sort + Auto) ── */
+          .controls-bar {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 14px;
             padding: 8px 14px;
             border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
             flex-wrap: wrap;
@@ -276,6 +390,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             opacity: 0;
             width: 0;
             height: 0;
+            position: absolute;
           }
 
           .toggle-slider {
@@ -308,8 +423,39 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             background: #fff;
           }
 
-          /* ── CONTENT ── */
+          .controls-separator {
+            width: 1px;
+            height: 16px;
+            background: var(--vscode-panel-border, rgba(255,255,255,0.1));
+            flex-shrink: 0;
+          }
+
+          /* Sort dropdown */
+          .sort-select {
+            font-family: var(--vscode-font-family, 'Segoe UI', sans-serif);
+            font-size: 11px;
+            color: var(--vscode-editor-foreground);
+            background: var(--vscode-input-background, rgba(255,255,255,0.06));
+            border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
+            border-radius: 4px;
+            padding: 2px 6px;
+            cursor: pointer;
+            outline: none;
+          }
+
+          .sort-select:focus {
+            border-color: #4fc3f7;
+          }
+
+          .sort-label {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, rgba(255,255,255,0.6));
+          }
+
+          /* ── SCROLLABLE CONTENT ── */
           .content {
+            flex: 1;
+            overflow-y: auto;
             padding: 6px 0;
           }
 
@@ -322,7 +468,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           /* ── PROCESS ROW ── */
           .process-row {
-            padding: 8px 14px;
+            padding: 6px 14px;
             cursor: pointer;
             user-select: none;
           }
@@ -339,6 +485,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             transition: transform 0.15s;
             width: 14px;
             text-align: center;
+            flex-shrink: 0;
           }
 
           .process-chevron.open {
@@ -352,22 +499,32 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             flex-shrink: 0;
           }
 
+          .process-info {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+          }
+
           .process-name {
             font-weight: 600;
             font-size: 13px;
             color: var(--vscode-editor-foreground);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
 
           .process-meta {
             font-size: 11px;
             color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-            margin-left: 4px;
+            opacity: 0.75;
           }
 
           .process-actions {
             margin-left: auto;
             display: flex;
             gap: 4px;
+            flex-shrink: 0;
           }
 
           /* ── PORT ROW ── */
@@ -378,9 +535,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           .port-row {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 8px;
-            padding: 5px 14px 5px 0;
+            padding: 4px 10px 4px 0;
             border-radius: 4px;
           }
 
@@ -388,10 +545,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
           }
 
+          .port-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+          }
+
           .port-icon {
             font-size: 12px;
             width: 16px;
             text-align: center;
+            flex-shrink: 0;
           }
 
           .port-number {
@@ -403,22 +568,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           .port-detail {
             font-size: 11px;
             color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+            white-space: nowrap;
           }
 
           .badge-public {
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
-            padding: 1px 8px;
-            border-radius: 10px;
-            background: rgba(255, 167, 38, 0.15);
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(255, 167, 38, 0.12);
             color: #ffa726;
-            border: 1px solid rgba(255, 167, 38, 0.3);
+            border: 1px solid rgba(255, 167, 38, 0.25);
+            white-space: nowrap;
           }
 
-          .port-actions {
-            margin-left: auto;
+          .port-right {
             display: flex;
+            align-items: center;
             gap: 4px;
+            flex-shrink: 0;
+            min-width: 30px;
+            justify-content: flex-end;
           }
 
           /* ── ACTION BUTTONS ── */
@@ -434,7 +604,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             align-items: center;
             justify-content: center;
             font-size: 12px;
-            transition: background 0.15s, border-color 0.15s;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+            flex-shrink: 0;
           }
 
           .btn-action:hover {
@@ -453,10 +624,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           /* ── FOOTER ── */
           .footer {
-            padding: 10px 14px;
+            flex-shrink: 0;
+            padding: 8px 14px;
             border-top: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
             font-size: 11px;
             color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+            background: var(--vscode-sideBar-background, var(--vscode-editor-background));
           }
 
           /* ── COLOR PALETTE ── */
@@ -484,47 +657,81 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             font-size: 32px;
             margin-bottom: 8px;
           }
+
+          /* ── NEW PROCESS HIGHLIGHT ── */
+          .process-row.highlight {
+            background: rgba(79, 195, 247, 0.08);
+            transition: background 1.5s ease-out;
+          }
+
+          .process-row.highlight-fade {
+            background: transparent;
+          }
         </style>
       </head>
       <body>
 
-        <!-- TOP BAR -->
-        <div class="top-bar">
-          <span class="top-bar-title">PORT<span class="accent">VIZ</span></span>
-          <button class="btn-icon" id="btn-refresh" title="Refresh">&#x21bb;</button>
+        <!-- STICKY HEADER -->
+        <div class="header-sticky">
+          <!-- TOP BAR -->
+          <div class="top-bar">
+            <span class="top-bar-title">PORT<span class="accent">VIZ</span></span>
+            <div class="top-bar-actions">
+              <button class="btn-icon" id="btn-refresh" title="Refresh">&#x21bb;</button>
+            </div>
+          </div>
+
+          <!-- CONTROLS BAR -->
+          <div class="controls-bar">
+            <div class="toggle-group">
+              <div class="toggle-switch">
+                <input type="checkbox" id="filter-hide-system" checked />
+                <span class="toggle-slider"></span>
+              </div>
+              <label for="filter-hide-system">Hide System</label>
+            </div>
+            <div class="toggle-group">
+              <div class="toggle-switch">
+                <input type="checkbox" id="filter-public-only" />
+                <span class="toggle-slider"></span>
+              </div>
+              <label for="filter-public-only">Public Only</label>
+            </div>
+            <div class="toggle-group">
+              <div class="toggle-switch">
+                <input type="checkbox" id="filter-show-udp" />
+                <span class="toggle-slider"></span>
+              </div>
+              <label for="filter-show-udp">Show UDP</label>
+            </div>
+
+            <div class="controls-separator"></div>
+
+            <div class="toggle-group">
+              <div class="toggle-switch">
+                <input type="checkbox" id="toggle-auto-refresh" />
+                <span class="toggle-slider"></span>
+              </div>
+              <label for="toggle-auto-refresh">Auto (5s)</label>
+            </div>
+
+            <div class="controls-separator"></div>
+
+            <span class="sort-label">Sort:</span>
+            <select class="sort-select" id="sort-mode">
+              <option value="name">Name</option>
+              <option value="pid">PID</option>
+              <option value="ports">Port Count</option>
+            </select>
+          </div>
         </div>
 
-        <!-- FILTER BAR -->
-        <div class="filter-bar">
-          <div class="toggle-group">
-            <div class="toggle-switch">
-              <input type="checkbox" id="filter-hide-system" checked />
-              <span class="toggle-slider"></span>
-            </div>
-            <label for="filter-hide-system">Hide System</label>
-          </div>
-          <div class="toggle-group">
-            <div class="toggle-switch">
-              <input type="checkbox" id="filter-public-only" />
-              <span class="toggle-slider"></span>
-            </div>
-            <label for="filter-public-only">Public Only</label>
-          </div>
-          <div class="toggle-group">
-            <div class="toggle-switch">
-              <input type="checkbox" id="filter-show-udp" />
-              <span class="toggle-slider"></span>
-            </div>
-            <label for="filter-show-udp">Show UDP</label>
-          </div>
-        </div>
-
-        <!-- CONTENT -->
+        <!-- SCROLLABLE CONTENT -->
         <div class="content" id="content">
-          <div class="loading-state">Loading…</div>
+          <div class="loading-state">Loading\u2026</div>
         </div>
 
-        <!-- FOOTER -->
+        <!-- FIXED FOOTER -->
         <div class="footer" id="footer"></div>
 
         <script>
@@ -534,6 +741,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           let expandedPids = new Set();
           let currentData = [];
+          let newPidSet = new Set();
 
           function render(data) {
             currentData = data;
@@ -541,12 +749,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             const footer = document.getElementById('footer');
 
             if (!data || data.length === 0) {
-              content.innerHTML = '<div class="empty-state"><div class="icon">📡</div><div>No listening ports found</div></div>';
+              content.innerHTML = '<div class="empty-state"><div class="icon">\u{1F4E1}</div><div>No listening ports found</div></div>';
               footer.textContent = '';
               return;
             }
 
-            let totalPorts = 0;
             let html = '';
 
             data.forEach((proc, i) => {
@@ -554,16 +761,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
               const portColorClass = PORT_COLORS[i % PORT_COLORS.length];
               const isOpen = expandedPids.has(proc.pid);
               const portCount = proc.ports.length;
-              totalPorts += portCount;
+              const isNew = newPidSet.has(proc.pid);
 
-              html += '<div class="process-row">';
+              html += '<div class="process-row' + (isNew ? ' highlight' : '') + '" data-row-pid="' + proc.pid + '">';
               html += '<div class="process-header" data-pid="' + proc.pid + '">';
-              html += '<span class="process-chevron ' + (isOpen ? 'open' : '') + '">&#9654;</span>';
+              html += '<span class="process-chevron ' + (isOpen ? 'open' : '') + '">\u25B6</span>';
               html += '<span class="process-dot ' + colorClass + '"></span>';
+              html += '<div class="process-info">';
               html += '<span class="process-name">' + escapeHtml(proc.name) + '</span>';
-              html += '<span class="process-meta">(' + portCount + ' port' + (portCount !== 1 ? 's' : '') + ')&nbsp;&nbsp;PID ' + proc.pid + '</span>';
+              html += '<span class="process-meta">' + portCount + ' port' + (portCount !== 1 ? 's' : '') + ' \u00B7 PID ' + proc.pid + '</span>';
+              html += '</div>';
               html += '<div class="process-actions">';
-              html += '<button class="btn-action kill-btn" data-kill-pid="' + proc.pid + '" title="Kill Process">&#x2716;</button>';
+              html += '<button class="btn-action kill-btn" data-kill-pid="' + proc.pid + '" data-kill-name="' + escapeHtml(proc.name) + '" data-kill-ports="' + portCount + '" title="Kill Process">\u2716</button>';
               html += '</div>';
               html += '</div>';
 
@@ -573,15 +782,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                   const isPublic = port.local_ip === '0.0.0.0';
                   const address = isPublic ? '0.0.0.0' : 'Localhost';
                   html += '<div class="port-row">';
-                  html += '<span class="port-icon">&#x1f4e6;</span>';
+                  html += '<div class="port-left">';
+                  html += '<span class="port-icon">\u{1F4E6}</span>';
                   html += '<span class="port-number ' + portColorClass + '">' + port.local_port + '</span>';
-                  html += '<span class="port-detail">&bull; ' + address + ' &bull; ' + port.protocol + '</span>';
+                  html += '<span class="port-detail">\u00B7 ' + address + ' \u00B7 ' + port.protocol + '</span>';
                   if (isPublic) {
-                    html += '<span class="badge-public">&#127760; Public</span>';
+                    html += '<span class="badge-public">\u{1F310} Public</span>';
                   }
-                  html += '<div class="port-actions">';
+                  html += '</div>';
+                  html += '<div class="port-right">';
                   if (port.protocol === 'TCP') {
-                    html += '<button class="btn-action open-btn" data-open-port="' + port.local_port + '" data-open-ip="' + port.local_ip + '" title="Open in Browser">&#x2197;</button>';
+                    html += '<button class="btn-action open-btn" data-open-port="' + port.local_port + '" data-open-ip="' + port.local_ip + '" title="Open in Browser">\u2197</button>';
                   }
                   html += '</div>';
                   html += '</div>';
@@ -593,9 +804,33 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             });
 
             content.innerHTML = html;
-            footer.textContent = data.length + ' process' + (data.length !== 1 ? 'es' : '') + ' \\u2022 ' + totalPorts + ' listening port' + (totalPorts !== 1 ? 's' : '');
-
             bindEvents();
+
+            // Fade out highlights after render
+            if (newPidSet.size > 0) {
+              setTimeout(() => {
+                document.querySelectorAll('.process-row.highlight').forEach(el => {
+                  el.classList.add('highlight-fade');
+                  el.classList.remove('highlight');
+                });
+                newPidSet.clear();
+              }, 1500);
+            }
+          }
+
+          function updateFooter(summary) {
+            const footer = document.getElementById('footer');
+            if (!summary) {
+              footer.textContent = '';
+              return;
+            }
+            const parts = [];
+            parts.push(summary.processes + ' process' + (summary.processes !== 1 ? 'es' : ''));
+            parts.push(summary.ports + ' listening port' + (summary.ports !== 1 ? 's' : ''));
+            if (summary.publicPorts > 0) {
+              parts.push(summary.publicPorts + ' public');
+            }
+            footer.textContent = parts.join(' \u2022 ');
           }
 
           function bindEvents() {
@@ -616,7 +851,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             document.querySelectorAll('[data-kill-pid]').forEach(el => {
               el.addEventListener('click', (e) => {
                 e.stopPropagation();
-                vscode.postMessage({ type: 'kill', pid: Number(el.dataset.killPid) });
+                vscode.postMessage({
+                  type: 'kill',
+                  pid: Number(el.dataset.killPid),
+                  processName: el.dataset.killName,
+                  portCount: Number(el.dataset.killPorts)
+                });
               });
             });
 
@@ -641,10 +881,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
           // ── Refresh button ──
           document.getElementById('btn-refresh').addEventListener('click', () => {
-            const btn = document.getElementById('btn-refresh');
-            btn.classList.add('spinning');
             vscode.postMessage({ type: 'refresh' });
-            setTimeout(() => btn.classList.remove('spinning'), 1000);
           });
 
           // ── Filter toggles ──
@@ -663,11 +900,39 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             });
           }
 
-          // ── Listen for data from extension ──
+          // ── Sort dropdown ──
+          document.getElementById('sort-mode').addEventListener('change', (e) => {
+            vscode.postMessage({ type: 'sortChange', sort: e.target.value });
+          });
+
+          // ── Auto refresh toggle ──
+          document.getElementById('toggle-auto-refresh').addEventListener('change', (e) => {
+            vscode.postMessage({ type: 'autoRefreshChange', enabled: e.target.checked });
+          });
+
+          // ── Listen for messages from extension ──
           window.addEventListener('message', (event) => {
             const msg = event.data;
-            if (msg.type === 'update') {
-              render(msg.data);
+            switch (msg.type) {
+              case 'update':
+                newPidSet = new Set(msg.newPids || []);
+                render(msg.data);
+                updateFooter(msg.summary);
+                break;
+
+              case 'loadingStart': {
+                const btn = document.getElementById('btn-refresh');
+                btn.disabled = true;
+                btn.classList.add('spinning');
+                break;
+              }
+
+              case 'loadingEnd': {
+                const btn = document.getElementById('btn-refresh');
+                btn.disabled = false;
+                btn.classList.remove('spinning');
+                break;
+              }
             }
           });
         </script>
