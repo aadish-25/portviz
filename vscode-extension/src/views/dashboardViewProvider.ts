@@ -1122,10 +1122,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
     .snap-cta:hover { background: rgba(79, 195, 247, 0.25); }
 
+    .snap-compare-selects {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     .snap-swap-btn {
       font-family: inherit;
       font-size: 14px;
-      background: none;
+      background: var(--vscode-input-background, rgba(255,255,255,0.06));
       border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
       color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
       cursor: pointer;
@@ -1135,7 +1142,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       display: flex;
       align-items: center;
       justify-content: center;
-      align-self: center;
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 2;
       transition: background 0.15s, color 0.15s;
     }
 
@@ -1571,27 +1582,29 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   <!-- TAB: SNAPSHOTS -->
   <div class="tab-content" id="tab-snapshots">
     <div class="snap-action-bar">
-      <button class="snap-btn snap-btn-primary" id="btn-save-snapshot">\u{2795} Save Snapshot</button>
+      <button class="snap-btn" id="btn-save-snapshot">\u{1F4F8} Save Snapshot</button>
     </div>
     <div id="snap-list-section">
       <div class="snap-empty">
         <div class="snap-empty-icon">\u{1F4F8}</div>
         <div class="snap-empty-title">No snapshots saved</div>
-        <div class="snap-empty-desc">Capture your current port state and compare it later to detect changes.</div>
-        <button class="snap-cta" id="btn-save-snapshot-cta">\u{2795} Save Snapshot</button>
+        <div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div>
+        <button class="snap-cta" id="btn-save-snapshot-cta">\u{2795} Capture Current State</button>
       </div>
     </div>
     <div class="snap-section" id="snap-compare-section" style="display:none;">
       <div class="snap-section-title">Compare</div>
       <div class="snap-compare">
-        <div class="snap-compare-row">
-          <span class="snap-compare-label">A</span>
-          <select class="snap-compare-select" id="snap-compare-a"></select>
-        </div>
-        <button class="snap-swap-btn" id="btn-snap-swap" title="Swap A and B">\u21C5</button>
-        <div class="snap-compare-row">
-          <span class="snap-compare-label">B</span>
-          <select class="snap-compare-select" id="snap-compare-b"></select>
+        <div class="snap-compare-selects">
+          <div class="snap-compare-row">
+            <span class="snap-compare-label">A</span>
+            <select class="snap-compare-select" id="snap-compare-a"></select>
+          </div>
+          <div class="snap-compare-row">
+            <span class="snap-compare-label">B</span>
+            <select class="snap-compare-select" id="snap-compare-b"></select>
+          </div>
+          <button class="snap-swap-btn" id="btn-snap-swap" title="Swap A and B">\u21C5</button>
         </div>
         <div class="snap-compare-actions">
           <button class="snap-compare-btn" id="btn-snap-compare">\u{1F50D} Compare</button>
@@ -1946,7 +1959,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       const compareSection = document.getElementById('snap-compare-section');
 
       if (!data || data.length === 0) {
-        el.innerHTML = '<div class="snap-empty"><div class="snap-empty-icon">\u{1F4F8}</div><div class="snap-empty-title">No snapshots saved</div><div class="snap-empty-desc">Capture your current port state and compare it later to detect changes.</div><button class="snap-cta" id="snap-cta-dynamic">\u{2795} Save Snapshot</button></div>';
+        el.innerHTML = '<div class="snap-empty"><div class="snap-empty-icon">\u{1F4F8}</div><div class="snap-empty-title">No snapshots saved</div><div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div><button class="snap-cta" id="snap-cta-dynamic">\u{2795} Capture Current State</button></div>';
         const ctaBtn = document.getElementById('snap-cta-dynamic');
         if (ctaBtn) { ctaBtn.addEventListener('click', () => vscode.postMessage({ type: 'snapshotSave' })); }
         compareSection.style.display = 'none';
