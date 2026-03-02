@@ -10,10 +10,37 @@ export interface Snapshot {
   data: PortEntry[];
 }
 
+export interface DiffPortEntry {
+  port: number;
+  process: string;
+  pid: number;
+  protocol: string;
+  ip: string;
+  state: string;
+  status: 'added' | 'removed' | 'unchanged';
+}
+
+export interface DiffProcessGroup {
+  name: string;
+  pid: number;
+  added: number;
+  removed: number;
+  unchanged: number;
+  ports: DiffPortEntry[];
+}
+
 export interface SnapshotDiff {
-  addedPorts: { port: number; process: string; protocol: string; ip: string }[];
-  removedPorts: { port: number; process: string; protocol: string; ip: string }[];
-  addedProcesses: string[];
-  removedProcesses: string[];
-  unchangedPorts: number;
+  context: {
+    nameA: string;
+    nameB: string;
+    ageA: string;
+    ageB: string;
+    isLiveCompare: boolean;
+  };
+  summary: {
+    addedPorts: number;
+    removedPorts: number;
+    unchangedPorts: number;
+  };
+  processGroups: DiffProcessGroup[];
 }
