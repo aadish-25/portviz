@@ -202,14 +202,34 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     const publicPorts = listening.filter(p => p.local_ip === '0.0.0.0');
     const udpPorts = listening.filter(p => p.protocol === 'UDP');
 
-    const riskMap = new Map<string, { name: string; pid: number; ports: PortEntry[] }>();
+    // Group public services by process (no duplicates)
+    const riskMap = new Map<string, { name: string; pid: number; ports: number[]; severity: 'high' | 'medium' | 'low' }>();
+    const sysProcesses = ['system', 'svchost', 'wininit', 'lsass', 'services', 'csrss', 'smss'];
+
     for (const p of publicPorts) {
       const key = `${p.process_name}-${p.pid}`;
       if (!riskMap.has(key)) {
-        riskMap.set(key, { name: p.process_name ?? 'Unknown', pid: p.pid, ports: [] });
+        const pn = (p.process_name ?? '').toLowerCase();
+        const isSystem = sysProcesses.some(s => pn.includes(s));
+        riskMap.set(key, {
+          name: p.process_name ?? 'Unknown',
+          pid: p.pid,
+          ports: [],
+          severity: isSystem ? 'high' : 'medium'
+        });
       }
-      riskMap.get(key)!.ports.push(p);
+      const entry = riskMap.get(key)!;
+      if (!entry.ports.includes(p.local_port)) {
+        entry.ports.push(p.local_port);
+      }
     }
+
+    // Sort: high first, then medium
+    const riskServices = Array.from(riskMap.values())
+      .sort((a, b) => {
+        const order = { high: 0, medium: 1, low: 2 };
+        return order[a.severity] - order[b.severity];
+      });
 
     this._view.webview.postMessage({
       type: 'overviewUpdate',
@@ -219,7 +239,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         publicPorts: publicPorts.length,
         udpPorts: udpPorts.length,
         lastUpdated: new Date().toLocaleTimeString(),
-        riskServices: Array.from(riskMap.values())
+        riskServices
       }
     });
   }
@@ -660,6 +680,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     .ov-val.orange { color: #ffa726; }
     .ov-val.purple { color: #ab47bc; }
 
+    /* Card hierarchy */
+    .ov-card.primary .ov-val { font-size: 24px; }
+    .ov-card.secondary .ov-val { font-size: 22px; font-weight: 700; }
+    .ov-card.tertiary .ov-val { font-size: 18px; opacity: 0.8; }
+    .ov-card.tertiary .ov-lbl { opacity: 0.7; }
+
     .ov-card.full .ov-val {
       font-size: 12px;
       font-weight: 400;
@@ -676,7 +702,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 0;
+      padding: 4px 0;
       border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.05));
     }
 
@@ -686,9 +712,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #ffa726;
       flex-shrink: 0;
     }
+
+    .ov-risk-dot.severity-high   { background: #ef5350; }
+    .ov-risk-dot.severity-medium { background: #ffa726; }
+    .ov-risk-dot.severity-low    { background: #66bb6a; }
 
     .ov-risk-info { flex: 1; min-width: 0; }
 
@@ -706,13 +735,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
 
     .ov-risk-badge {
-      font-size: 10px;
-      font-weight: 600;
-      padding: 2px 8px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 2px 7px;
       border-radius: 999px;
-      background: rgba(255, 167, 38, 0.12);
-      color: #ffa726;
-      border: 1px solid rgba(255, 167, 38, 0.25);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.1));
       flex-shrink: 0;
     }
 
@@ -1666,10 +1696,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       html += '<div class="ov-section">';
       html += '<div class="ov-section-title">Summary</div>';
       html += '<div class="ov-grid">';
-      html += ovCard(data.totalProcesses, 'Processes', 'green');
-      html += ovCard(data.listeningPorts, 'Listening Ports', 'blue');
-      html += ovCard(data.publicPorts, 'Public Ports', 'orange');
-      html += ovCard(data.udpPorts, 'UDP Ports', 'purple');
+      html += ovCard(data.listeningPorts, 'Listening Ports', 'blue', 'primary');
+      html += ovCard(data.publicPorts, 'Public Ports', 'orange', 'secondary');
+      html += ovCard(data.totalProcesses, 'Processes', 'green', 'tertiary');
+      html += ovCard(data.udpPorts, 'UDP Ports', 'purple', 'tertiary');
       html += '<div class="ov-card full"><div class="ov-val">Last updated: ' + data.lastUpdated + '</div></div>';
       html += '</div></div>';
 
@@ -1679,14 +1709,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         html += '<div class="ov-risk-empty">\u2705 No publicly exposed services</div>';
       } else {
         data.riskServices.forEach(svc => {
-          const ports = svc.ports.map(p => p.local_port).join(', ');
+          const ports = svc.ports.join(', ');
+          const sevClass = 'severity-' + svc.severity;
+          const sevLabel = svc.severity === 'high' ? 'HIGH' : svc.severity === 'medium' ? 'MED' : 'LOW';
           html += '<div class="ov-risk-item">';
-          html += '<span class="ov-risk-dot"></span>';
+          html += '<span class="ov-risk-dot ' + sevClass + '"></span>';
           html += '<div class="ov-risk-info">';
           html += '<div class="ov-risk-name">' + escapeHtml(svc.name) + '</div>';
           html += '<div class="ov-risk-detail">PID ' + svc.pid + ' \u00B7 Ports: ' + ports + '</div>';
           html += '</div>';
-          html += '<span class="ov-risk-badge">0.0.0.0</span>';
+          html += '<span class="ov-risk-badge">' + sevLabel + '</span>';
           html += '</div>';
         });
       }
@@ -1695,8 +1727,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       el.innerHTML = html;
     }
 
-    function ovCard(value, label, cls) {
-      return '<div class="ov-card"><div class="ov-val ' + cls + '">' + value + '</div><div class="ov-lbl">' + label + '</div></div>';
+    function ovCard(value, label, cls, tier) {
+      return '<div class="ov-card ' + (tier || '') + '"><div class="ov-val ' + cls + '">' + value + '</div><div class="ov-lbl">' + label + '</div></div>';
     }
 
     // ── Footer ──
