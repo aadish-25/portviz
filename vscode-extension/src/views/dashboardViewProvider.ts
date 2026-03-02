@@ -373,11 +373,20 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this._sendSnapshotList();
   }
 
-  private _handleSnapshotDelete(id: string): void {
-    const success = this._snapshotService.delete(id);
-    if (success) {
-      this._sendSnapshotList();
-    }
+  private async _handleSnapshotDelete(id: string): Promise<void> {
+    const snapshots = this._snapshotService.getAll();
+    const snap = snapshots.find(s => s.id === id);
+    if (!snap) { return; }
+
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete snapshot "${snap.name}"?`,
+      { modal: true },
+      'Yes'
+    );
+    if (confirm !== 'Yes') { return; }
+
+    this._snapshotService.delete(id);
+    this._sendSnapshotList();
   }
 
   private async _handleSnapshotRename(id: string): Promise<void> {
@@ -451,6 +460,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       display: flex;
       flex-direction: column;
       line-height: 1.5;
+      min-width: 260px;
     }
 
     /* ── TOP HEADER ── */
@@ -1695,12 +1705,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       let html = '<div class="snap-section">';
       html += '<div class="snap-section-title">Saved Snapshots (' + data.length + ')</div>';
       html += '<div class="snap-table">';
-      html += '<div class="snap-table-header"><span>Name</span><span style="text-align:center">Ports</span><span style="text-align:right">Date</span><span></span></div>';
+      html += '<div class="snap-table-header"><span>Name</span><span style="text-align:center">Procs</span><span style="text-align:right">Date</span><span></span></div>';
 
       data.forEach((snap, i) => {
         html += '<div class="snap-row" data-snap-id="' + snap.id + '">';
         html += '<div class="snap-name-cell"><span class="snap-dot ' + getSnapDotColor(i) + '"></span><span class="snap-name">' + escapeHtml(snap.name) + '</span></div>';
-        html += '<span class="snap-ports">' + snap.portCount + '</span>';
+        html += '<span class="snap-ports">' + snap.processCount + '</span>';
         html += '<span class="snap-date">' + timeAgo(snap.createdAt) + '</span>';
         html += '<button class="snap-menu-btn" data-snap-menu="' + snap.id + '" title="More actions">\u22EE</button>';
         html += '</div>';

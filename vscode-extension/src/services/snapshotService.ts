@@ -18,7 +18,7 @@ export class SnapshotService {
   /** Save a new snapshot from current data */
   save(name: string, data: PortEntry[]): Snapshot {
     const listening = data.filter(p =>
-      (p.protocol === 'TCP' && p.state === 'LISTENING') || p.protocol === 'UDP'
+      p.protocol === 'TCP' && p.state === 'LISTENING'
     );
 
     const processSet = new Set(listening.map(p => `${p.process_name}-${p.pid}`));
