@@ -113,13 +113,12 @@ export class SnapshotService {
       }
     }
 
-    // Ports in both → unchanged
+    // Ports in both → unchanged (count only, not rendered)
     for (const [key, p] of portsA) {
       if (portsB.has(key)) {
         const g = ensureGroup(p);
         g.unchanged++;
         unchangedTotal++;
-        g.ports.push({ port: p.local_port, process: p.process_name ?? 'Unknown', pid: p.pid, protocol: p.protocol, ip: p.local_ip, state: p.state ?? '', status: 'unchanged' });
       }
     }
 

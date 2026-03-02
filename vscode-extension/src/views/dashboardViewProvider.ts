@@ -2188,9 +2188,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         diff.processGroups.forEach(group => {
           if (group.added === 0 && group.removed === 0) { return; } // skip unchanged-only groups
           html += '<div class="snap-diff-group">';
-          html += '<div class="snap-diff-group-header">' + escapeHtml(group.name) + ' <span class="snap-diff-group-meta">PID ' + group.pid + ' \u00B7 +' + group.added + ' -' + group.removed + ' =' + group.unchanged + '</span></div>';
+          html += '<div class="snap-diff-group-header" style="padding-left:12px;">' + escapeHtml(group.name) + ' <span class="snap-diff-group-meta">PID ' + group.pid + ' \u00B7 +' + group.added + ' -' + group.removed + '</span></div>';
           group.ports.forEach(p => {
-            const marker = p.status === 'added' ? '+' : p.status === 'removed' ? '\u2212' : '=';
+            if (p.status === 'unchanged') { return; }
+            const marker = p.status === 'added' ? '+' : '\u2212';
             html += '<div class="snap-diff-port ' + p.status + '"><span class="diff-marker">' + marker + '</span>:' + p.port + ' \u00B7 ' + p.ip + ' \u00B7 ' + p.protocol + '</div>';
           });
           html += '</div>';
