@@ -1369,28 +1369,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
     .snap-dropdown-item.danger { color: #ef5350; }
 
-    /* Compare section — sticky bottom */
-    #tab-snapshots {
-      display: none;
-      flex-direction: column;
-    }
-    #tab-snapshots.active {
-      display: flex;
-    }
-
-    .snap-scroll-area {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0 14px;
-    }
-
-    .snap-compare-sticky {
-      flex-shrink: 0;
-      padding: 10px 14px;
-      border-top: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-    }
-
+    /* Compare section */
     .snap-compare {
       display: flex;
       flex-direction: column;
@@ -1667,18 +1646,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     <div class="snap-action-bar">
       <button class="snap-btn" id="btn-save-snapshot">\u{1F4F8} Save Snapshot</button>
     </div>
-    <div class="snap-scroll-area">
-      <div id="snap-list-section">
-        <div class="snap-empty">
-          <div class="snap-empty-icon">\u{1F4F8}</div>
-          <div class="snap-empty-title">No snapshots saved</div>
-          <div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div>
-          <button class="snap-cta" id="btn-save-snapshot-cta">\u{2795} Capture Current State</button>
-        </div>
+    <div id="snap-list-section">
+      <div class="snap-empty">
+        <div class="snap-empty-icon">\u{1F4F8}</div>
+        <div class="snap-empty-title">No snapshots saved</div>
+        <div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div>
+        <button class="snap-cta" id="btn-save-snapshot-cta">\u{2795} Capture Current State</button>
       </div>
-      <div id="snap-diff-results"></div>
     </div>
-    <div class="snap-compare-sticky" id="snap-compare-section" style="display:none;">
+    <div class="snap-section" id="snap-compare-section" style="display:none;">
+      <div class="snap-section-title">Compare</div>
       <div class="snap-compare">
         <div class="snap-compare-selects">
           <div class="snap-compare-row">
@@ -1698,6 +1675,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         <div class="snap-compare-helper" id="snap-compare-helper"></div>
       </div>
     </div>
+    <div id="snap-diff-results"></div>
   </div>
 
   <!-- TAB: ORCHESTRATION -->
