@@ -870,6 +870,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       color: var(--vscode-descriptionForeground, rgba(255,255,255,0.6));
     }
 
+    .sort-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
     /* Process rows */
     .process-row {
       padding: 6px 14px;
@@ -1199,6 +1207,29 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     .snap-detail-port .port-num { color: #42a5f5; font-weight: 600; }
     .snap-detail-port .port-pub { color: #ffa726; font-weight: 600; }
 
+    /* Empty state */
+    .snap-empty {
+      text-align: center;
+      padding: 30px 14px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+    }
+
+    .snap-empty-icon { font-size: 28px; margin-bottom: 8px; }
+
+    .snap-empty-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--vscode-editor-foreground);
+      margin-bottom: 4px;
+    }
+
+    .snap-empty-desc {
+      font-size: 11px;
+      max-width: 220px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
     .snap-section-title {
       font-size: 11px;
       font-weight: 700;
@@ -1523,12 +1554,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         <label for="toggle-auto-refresh">Auto Refresh (5s)</label>
       </div>
       <div class="controls-sep"></div>
-      <span class="sort-label">Sort by:</span>
-      <select class="sort-select" id="sort-mode">
-        <option value="name">Name</option>
-        <option value="pid">PID</option>
-        <option value="ports">Port Count</option>
-      </select>
+      <div class="sort-group">
+        <span class="sort-label">Sort by:</span>
+        <select class="sort-select" id="sort-mode">
+          <option value="name">Name</option>
+          <option value="pid">PID</option>
+          <option value="ports">Port Count</option>
+        </select>
+      </div>
     </div>
     <div id="live-content">
       <div class="loading-state">Loading\u2026</div>
