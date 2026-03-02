@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { CliRunner } from '../services/cliRunner';
+import { SnapshotService } from '../services/snapshotService';
 import { PortEntry } from '../types/report';
 
 // ─── Data Types ───
@@ -31,8 +32,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private _autoRefreshInterval?: ReturnType<typeof setInterval>;
   private _previousPids: Set<number> = new Set();
   private _isRefreshing = false;
+  private readonly _snapshotService: SnapshotService;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(private readonly _extensionUri: vscode.Uri, globalState: vscode.Memento) {
+    this._snapshotService = new SnapshotService(globalState);
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -70,6 +74,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         case 'autoRefreshChange':
           this._handleAutoRefresh(msg.enabled);
           break;
+
+        // ── Snapshot messages ──
+        case 'snapshotSave':
+          await this._handleSnapshotSave();
+          break;
+        case 'snapshotDelete':
+          this._handleSnapshotDelete(msg.id);
+          break;
+        case 'snapshotRename':
+          await this._handleSnapshotRename(msg.id);
+          break;
+        case 'snapshotCompare':
+          this._handleSnapshotCompare(msg.idA, msg.idB);
+          break;
+        case 'snapshotList':
+          this._sendSnapshotList();
+          break;
       }
     });
 
@@ -100,6 +121,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this._rawData = result.data;
     this._sendFilteredData();
     this._sendOverviewData();
+    this._sendSnapshotList();
   }
 
   // ─── LIVE TAB DATA ───
@@ -328,6 +350,76 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       clearInterval(this._autoRefreshInterval);
       this._autoRefreshInterval = undefined as any;
     }
+  }
+
+  // ─── SNAPSHOT HANDLERS ───
+
+  private async _handleSnapshotSave(): Promise<void> {
+    if (this._rawData.length === 0) {
+      vscode.window.showWarningMessage('No port data to snapshot. Refresh first.');
+      return;
+    }
+
+    const name = await vscode.window.showInputBox({
+      prompt: 'Name this snapshot',
+      placeHolder: 'e.g. before-deploy',
+      validateInput: (v) => v.trim().length === 0 ? 'Name cannot be empty' : undefined
+    });
+
+    if (!name) { return; }
+
+    this._snapshotService.save(name.trim(), this._rawData);
+    vscode.window.showInformationMessage(`Snapshot "${name.trim()}" saved`);
+    this._sendSnapshotList();
+  }
+
+  private _handleSnapshotDelete(id: string): void {
+    const success = this._snapshotService.delete(id);
+    if (success) {
+      this._sendSnapshotList();
+    }
+  }
+
+  private async _handleSnapshotRename(id: string): Promise<void> {
+    const snapshots = this._snapshotService.getAll();
+    const snap = snapshots.find(s => s.id === id);
+    if (!snap) { return; }
+
+    const newName = await vscode.window.showInputBox({
+      prompt: 'Rename snapshot',
+      value: snap.name,
+      validateInput: (v) => v.trim().length === 0 ? 'Name cannot be empty' : undefined
+    });
+
+    if (!newName) { return; }
+
+    this._snapshotService.rename(id, newName.trim());
+    this._sendSnapshotList();
+  }
+
+  private _handleSnapshotCompare(idA: string, idB: string): void {
+    const diff = this._snapshotService.compare(idA, idB);
+    if (!diff) {
+      vscode.window.showErrorMessage('Could not compare snapshots');
+      return;
+    }
+
+    this._view?.webview.postMessage({ type: 'snapshotDiff', data: diff });
+  }
+
+  private _sendSnapshotList(): void {
+    const snapshots = this._snapshotService.getAll();
+    this._view?.webview.postMessage({
+      type: 'snapshotListUpdate',
+      data: snapshots.map(s => ({
+        id: s.id,
+        name: s.name,
+        createdAt: s.createdAt,
+        portCount: s.portCount,
+        publicCount: s.publicCount,
+        processCount: s.processCount
+      }))
+    });
   }
 
   // ─────────────────────────────────────────────
@@ -890,7 +982,267 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     .process-row.highlight-fade { background: transparent; }
 
     /* ════════════════════════════════════
-       PLACEHOLDER TABS (Snapshots, Orchestration)
+       SNAPSHOTS TAB
+       ════════════════════════════════════ */
+
+    .snap-section {
+      padding: 0 14px;
+      margin-bottom: 16px;
+    }
+
+    .snap-section:first-child { padding-top: 10px; }
+
+    .snap-action-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
+      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    .snap-btn {
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 4px;
+      border: 1px solid #4fc3f7;
+      background: rgba(79, 195, 247, 0.1);
+      color: #4fc3f7;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .snap-btn:hover { background: rgba(79, 195, 247, 0.2); }
+
+    .snap-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
+    }
+
+    .snap-table {
+      width: 100%;
+    }
+
+    .snap-table-header {
+      display: grid;
+      grid-template-columns: 1fr 55px 80px 24px;
+      gap: 4px;
+      padding: 4px 0;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.06));
+    }
+
+    .snap-row {
+      display: grid;
+      grid-template-columns: 1fr 55px 80px 24px;
+      gap: 4px;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.04));
+      font-size: 12px;
+    }
+
+    .snap-row:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+      border-radius: 4px;
+    }
+
+    .snap-name-cell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .snap-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .snap-dot.green  { background: #66bb6a; }
+    .snap-dot.blue   { background: #42a5f5; }
+    .snap-dot.orange { background: #ffa726; }
+    .snap-dot.purple { background: #ab47bc; }
+
+    .snap-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 600;
+    }
+
+    .snap-ports { text-align: center; color: #42a5f5; font-weight: 600; }
+
+    .snap-date {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+      text-align: right;
+    }
+
+    .snap-menu-btn {
+      background: none;
+      border: none;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      width: 24px;
+      height: 24px;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .snap-menu-btn:hover {
+      background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+      color: var(--vscode-editor-foreground);
+    }
+
+    .snap-dropdown {
+      position: absolute;
+      right: 14px;
+      background: var(--vscode-menu-background, #252526);
+      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 20;
+      min-width: 120px;
+      overflow: hidden;
+    }
+
+    .snap-dropdown-item {
+      padding: 6px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--vscode-editor-foreground);
+      transition: background 0.1s;
+    }
+
+    .snap-dropdown-item:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
+    }
+
+    .snap-dropdown-item.danger { color: #ef5350; }
+
+    .snap-empty {
+      text-align: center;
+      padding: 30px 0;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+      font-size: 12px;
+    }
+
+    .snap-empty .snap-empty-icon { font-size: 24px; margin-bottom: 6px; }
+
+    /* Compare section */
+    .snap-compare {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .snap-compare-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .snap-compare-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+      width: 14px;
+      flex-shrink: 0;
+    }
+
+    .snap-compare-select {
+      flex: 1;
+      font-family: inherit;
+      font-size: 11px;
+      color: var(--vscode-editor-foreground);
+      background: var(--vscode-input-background, rgba(255,255,255,0.06));
+      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
+      border-radius: 4px;
+      padding: 4px 6px;
+      outline: none;
+    }
+
+    .snap-compare-select:focus { border-color: #4fc3f7; }
+
+    .snap-compare-btn {
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 4px;
+      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
+      background: var(--vscode-input-background, rgba(255,255,255,0.06));
+      color: var(--vscode-editor-foreground);
+      cursor: pointer;
+      align-self: flex-start;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .snap-compare-btn:hover { border-color: #4fc3f7; background: rgba(79, 195, 247, 0.1); }
+
+    /* Diff results */
+    .snap-diff {
+      margin-top: 8px;
+    }
+
+    .snap-diff-summary {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .snap-diff-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .snap-diff-badge.added  { background: rgba(102,187,106,0.15); color: #66bb6a; }
+    .snap-diff-badge.removed { background: rgba(239,83,80,0.15); color: #ef5350; }
+    .snap-diff-badge.same   { background: rgba(255,255,255,0.06); color: var(--vscode-descriptionForeground); }
+
+    .snap-diff-list {
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    .snap-diff-item {
+      padding: 2px 0;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .snap-diff-item.added { color: #66bb6a; }
+    .snap-diff-item.removed { color: #ef5350; }
+
+    /* ════════════════════════════════════
+       PLACEHOLDER TABS (Orchestration)
        ════════════════════════════════════ */
 
     .placeholder-page {
@@ -1011,14 +1363,29 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   <!-- TAB: SNAPSHOTS -->
   <div class="tab-content" id="tab-snapshots">
-    <div class="placeholder-page">
-      <div class="ph-icon">\u{1F4F8}</div>
-      <div class="ph-title">Snapshots</div>
-      <div class="ph-desc">Save and compare port states over time.</div>
-      <div class="ph-btn-group">
-        <div class="ph-btn">\u{1F4BE} Save Snapshot</div>
-        <div class="ph-btn">\u{1F504} Compare Snapshots</div>
+    <div class="snap-action-bar">
+      <button class="snap-btn" id="btn-save-snapshot">\u{2795} Save Snapshot</button>
+    </div>
+    <div id="snap-list-section">
+      <div class="snap-empty">
+        <div class="snap-empty-icon">\u{1F4F8}</div>
+        <div>No snapshots yet. Save one to get started.</div>
       </div>
+    </div>
+    <div class="snap-section" id="snap-compare-section" style="display:none;">
+      <div class="snap-section-title">Compare</div>
+      <div class="snap-compare">
+        <div class="snap-compare-row">
+          <span class="snap-compare-label">A</span>
+          <select class="snap-compare-select" id="snap-compare-a"></select>
+        </div>
+        <div class="snap-compare-row">
+          <span class="snap-compare-label">B</span>
+          <select class="snap-compare-select" id="snap-compare-b"></select>
+        </div>
+        <button class="snap-compare-btn" id="btn-snap-compare">\u{1F50D} Compare</button>
+      </div>
+      <div id="snap-diff-results"></div>
     </div>
   </div>
 
@@ -1266,6 +1633,202 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       footer.textContent = parts.join(' \u2022 ');
     }
 
+    // ════════════════════════════════
+    // SNAPSHOT TAB LOGIC
+    // ════════════════════════════════
+
+    let snapshotData = [];
+    let activeDropdownId = null;
+
+    // Save button
+    document.getElementById('btn-save-snapshot').addEventListener('click', () => {
+      vscode.postMessage({ type: 'snapshotSave' });
+    });
+
+    // Compare button
+    document.getElementById('btn-snap-compare').addEventListener('click', () => {
+      const idA = document.getElementById('snap-compare-a').value;
+      const idB = document.getElementById('snap-compare-b').value;
+      if (!idA || !idB) { return; }
+      if (idA === idB) { return; }
+      vscode.postMessage({ type: 'snapshotCompare', idA, idB });
+    });
+
+    // Close dropdowns on outside click
+    document.addEventListener('click', () => {
+      closeDropdowns();
+    });
+
+    function closeDropdowns() {
+      document.querySelectorAll('.snap-dropdown').forEach(d => d.remove());
+      activeDropdownId = null;
+    }
+
+    function timeAgo(isoStr) {
+      const diff = Date.now() - new Date(isoStr).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + ' min ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ago';
+      const days = Math.floor(hrs / 24);
+      if (days < 30) return days + 'd ago';
+      return new Date(isoStr).toLocaleDateString();
+    }
+
+    function getSnapDotColor(index) {
+      const colors = ['green', 'blue', 'orange', 'purple'];
+      return colors[index % colors.length];
+    }
+
+    function renderSnapshots(data) {
+      snapshotData = data;
+      const el = document.getElementById('snap-list-section');
+      const compareSection = document.getElementById('snap-compare-section');
+
+      if (!data || data.length === 0) {
+        el.innerHTML = '<div class="snap-empty"><div class="snap-empty-icon">\u{1F4F8}</div><div>No snapshots yet. Save one to get started.</div></div>';
+        compareSection.style.display = 'none';
+        return;
+      }
+
+      let html = '<div class="snap-section">';
+      html += '<div class="snap-section-title">Saved Snapshots (' + data.length + ')</div>';
+      html += '<div class="snap-table">';
+      html += '<div class="snap-table-header"><span>Name</span><span style="text-align:center">Ports</span><span style="text-align:right">Date</span><span></span></div>';
+
+      data.forEach((snap, i) => {
+        html += '<div class="snap-row" data-snap-id="' + snap.id + '">';
+        html += '<div class="snap-name-cell"><span class="snap-dot ' + getSnapDotColor(i) + '"></span><span class="snap-name">' + escapeHtml(snap.name) + '</span></div>';
+        html += '<span class="snap-ports">' + snap.portCount + '</span>';
+        html += '<span class="snap-date">' + timeAgo(snap.createdAt) + '</span>';
+        html += '<button class="snap-menu-btn" data-snap-menu="' + snap.id + '" title="More actions">\u22EE</button>';
+        html += '</div>';
+      });
+
+      html += '</div></div>';
+      el.innerHTML = html;
+
+      // Show compare section if 2+ snapshots
+      if (data.length >= 2) {
+        compareSection.style.display = '';
+        populateCompareSelects(data);
+      } else {
+        compareSection.style.display = 'none';
+      }
+
+      // Bind menu buttons
+      document.querySelectorAll('[data-snap-menu]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.snapMenu;
+          if (activeDropdownId === id) { closeDropdowns(); return; }
+          closeDropdowns();
+          showSnapDropdown(btn, id);
+        });
+      });
+    }
+
+    function showSnapDropdown(anchor, id) {
+      activeDropdownId = id;
+      const dd = document.createElement('div');
+      dd.className = 'snap-dropdown';
+
+      const rect = anchor.getBoundingClientRect();
+      dd.style.top = (rect.bottom + 2) + 'px';
+
+      dd.innerHTML = '<div class="snap-dropdown-item" data-action="rename">Rename</div><div class="snap-dropdown-item danger" data-action="delete">Delete</div>';
+
+      dd.querySelector('[data-action="rename"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeDropdowns();
+        vscode.postMessage({ type: 'snapshotRename', id });
+      });
+
+      dd.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeDropdowns();
+        vscode.postMessage({ type: 'snapshotDelete', id });
+      });
+
+      document.body.appendChild(dd);
+    }
+
+    function populateCompareSelects(data) {
+      const selA = document.getElementById('snap-compare-a');
+      const selB = document.getElementById('snap-compare-b');
+      const prevA = selA.value;
+      const prevB = selB.value;
+
+      selA.innerHTML = '';
+      selB.innerHTML = '';
+
+      data.forEach(snap => {
+        const optA = document.createElement('option');
+        optA.value = snap.id;
+        optA.textContent = snap.name;
+        selA.appendChild(optA);
+
+        const optB = document.createElement('option');
+        optB.value = snap.id;
+        optB.textContent = snap.name;
+        selB.appendChild(optB);
+      });
+
+      // Restore previous selection or default to first two
+      if (prevA && data.some(s => s.id === prevA)) { selA.value = prevA; }
+      if (prevB && data.some(s => s.id === prevB)) { selB.value = prevB; }
+      else if (data.length >= 2) { selB.value = data[1].id; }
+    }
+
+    function renderDiff(diff) {
+      const el = document.getElementById('snap-diff-results');
+      if (!diff) { el.innerHTML = ''; return; }
+
+      let html = '<div class="snap-diff">';
+
+      // Summary badges
+      html += '<div class="snap-diff-summary">';
+      html += '<span class="snap-diff-badge added">+' + diff.addedPorts.length + ' new</span>';
+      html += '<span class="snap-diff-badge removed">-' + diff.removedPorts.length + ' removed</span>';
+      html += '<span class="snap-diff-badge same">' + diff.unchangedPorts + ' unchanged</span>';
+      html += '</div>';
+
+      // Added ports
+      if (diff.addedPorts.length > 0) {
+        html += '<div class="snap-diff-list">';
+        diff.addedPorts.forEach(p => {
+          html += '<div class="snap-diff-item added">\u002B :' + p.port + ' (' + escapeHtml(p.process) + ') ' + p.protocol + '</div>';
+        });
+        html += '</div>';
+      }
+
+      // Removed ports
+      if (diff.removedPorts.length > 0) {
+        html += '<div class="snap-diff-list">';
+        diff.removedPorts.forEach(p => {
+          html += '<div class="snap-diff-item removed">\u2212 :' + p.port + ' (' + escapeHtml(p.process) + ') ' + p.protocol + '</div>';
+        });
+        html += '</div>';
+      }
+
+      if (diff.addedPorts.length === 0 && diff.removedPorts.length === 0) {
+        html += '<div style="font-size:12px;color:var(--vscode-descriptionForeground);padding:4px 0;">\u2705 Snapshots are identical</div>';
+      }
+
+      html += '</div>';
+      el.innerHTML = html;
+    }
+
+    // Request snapshot list on tab switch to snapshots
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.tab === 'snapshots') {
+          vscode.postMessage({ type: 'snapshotList' });
+        }
+      });
+    });
+
     // ── Message handler ──
     window.addEventListener('message', (event) => {
       const msg = event.data;
@@ -1278,6 +1841,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
         case 'overviewUpdate':
           renderOverview(msg.data);
+          break;
+
+        case 'snapshotListUpdate':
+          renderSnapshots(msg.data);
+          break;
+
+        case 'snapshotDiff':
+          renderDiff(msg.data);
           break;
 
         case 'loadingStart': {
