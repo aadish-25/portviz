@@ -460,7 +460,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       display: flex;
       flex-direction: column;
       line-height: 1.5;
-      min-width: 260px;
     }
 
     /* ── TOP HEADER ── */
@@ -1317,7 +1316,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       <button class="tab-btn active" data-tab="overview">Overview</button>
       <button class="tab-btn" data-tab="live">Live</button>
       <button class="tab-btn" data-tab="snapshots">Snapshots</button>
-      <button class="tab-btn" data-tab="orchestration">Orchestration</button>
+      <button class="tab-btn" data-tab="orchestration">Orch</button>
     </div>
   </div>
 
