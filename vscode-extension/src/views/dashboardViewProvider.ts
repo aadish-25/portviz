@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import { CliRunner } from '../services/cliRunner';
 import { SnapshotService } from '../services/snapshotService';
+import { OrchestrationService } from '../services/orchestrationService';
 import { PortEntry } from '../types/report';
+import { ServiceRole } from '../types/orchestration';
 
 // ─── Data Types ───
 
@@ -33,9 +35,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private _previousPids: Set<number> = new Set();
   private _isRefreshing = false;
   private readonly _snapshotService: SnapshotService;
+  private readonly _orchestrationService: OrchestrationService;
 
   constructor(private readonly _extensionUri: vscode.Uri, globalState: vscode.Memento) {
     this._snapshotService = new SnapshotService(globalState);
+    this._orchestrationService = new OrchestrationService(globalState);
   }
 
   public resolveWebviewView(
@@ -94,11 +98,47 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         case 'snapshotList':
           this._sendSnapshotList();
           break;
+
+        // ── Orchestration messages ──
+        case 'orchLoad':
+          this._sendOrchestrationData();
+          break;
+        case 'orchAcceptDetection':
+          this._handleOrchAcceptDetection(msg.detection);
+          break;
+        case 'orchIgnoreDetection':
+          // No-op: webview removes from list
+          break;
+        case 'orchCreateService':
+          this._handleOrchCreateService(msg.service);
+          break;
+        case 'orchEditService':
+          this._handleOrchEditService(msg.id, msg.updates);
+          break;
+        case 'orchDeleteService':
+          this._handleOrchDeleteService(msg.id);
+          break;
+        case 'orchStartService':
+          this._handleOrchStartService(msg.id);
+          break;
+        case 'orchStopService':
+          this._handleOrchStopService(msg.id);
+          break;
+        case 'orchSaveProfile':
+          this._handleOrchSaveProfile(msg.name);
+          break;
+        case 'orchLoadProfile':
+          this._handleOrchLoadProfile();
+          break;
+        case 'orchOpenBrowser':
+          vscode.env.openExternal(vscode.Uri.parse(`http://localhost:${msg.port}`));
+          break;
       }
     });
 
     webviewView.onDidDispose(() => {
       this._clearAutoRefresh();
+      this._orchestrationService.dispose();
     });
 
     this.refresh();
@@ -125,6 +165,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this._sendFilteredData();
     this._sendOverviewData();
     this._sendSnapshotList();
+    this._sendOrchestrationData();
   }
 
   // ─── LIVE TAB DATA ───
@@ -484,6 +525,105 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         };
       })
     });
+  }
+
+  // ─── ORCHESTRATION HANDLERS ───
+
+  private _sendOrchestrationData(): void {
+    const detected = this._orchestrationService.detectServices(this._rawData);
+    const services = this._orchestrationService.reconcileStatus(this._rawData);
+    const profile = this._orchestrationService.getProfile();
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? '';
+
+    this._view?.webview.postMessage({
+      type: 'orchUpdate',
+      data: {
+        detected,
+        services,
+        profileName: profile?.projectName ?? null,
+        workspaceRoot
+      }
+    });
+  }
+
+  private _handleOrchAcceptDetection(detection: any): void {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? '';
+    this._orchestrationService.createServiceFromDetection(detection, workspaceRoot);
+    this._sendOrchestrationData();
+  }
+
+  private _handleOrchCreateService(data: any): void {
+    this._orchestrationService.createManualService(
+      data.name,
+      data.role as ServiceRole,
+      data.port ? Number(data.port) : undefined,
+      data.startCommands ?? [],
+      data.workingDirectory || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || ''
+    );
+    this._sendOrchestrationData();
+    vscode.window.showInformationMessage(`Service "${data.name}" created`);
+  }
+
+  private _handleOrchEditService(id: string, updates: any): void {
+    this._orchestrationService.updateService(id, updates);
+    this._sendOrchestrationData();
+  }
+
+  private async _handleOrchDeleteService(id: string): Promise<void> {
+    const services = this._orchestrationService.getSavedServices();
+    const svc = services.find(s => s.id === id);
+    if (!svc) { return; }
+
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete service "${svc.name}"?`,
+      { modal: true },
+      'Yes'
+    );
+    if (confirm !== 'Yes') { return; }
+
+    this._orchestrationService.deleteService(id);
+    this._sendOrchestrationData();
+  }
+
+  private async _handleOrchStartService(id: string): Promise<void> {
+    const services = this._orchestrationService.getSavedServices();
+    const svc = services.find(s => s.id === id);
+    if (!svc) { return; }
+
+    await this._orchestrationService.startService(svc);
+    this._sendOrchestrationData();
+
+    // Re-check status after a delay
+    setTimeout(() => this._sendOrchestrationData(), 3000);
+  }
+
+  private _handleOrchStopService(id: string): void {
+    const services = this._orchestrationService.getSavedServices();
+    const svc = services.find(s => s.id === id);
+    if (!svc) { return; }
+
+    this._orchestrationService.stopService(svc);
+    // Refresh port data after stop
+    setTimeout(async () => {
+      await this.refresh();
+      this._sendOrchestrationData();
+    }, 1000);
+  }
+
+  private _handleOrchSaveProfile(name: string): void {
+    this._orchestrationService.saveProfile(name);
+    vscode.window.showInformationMessage(`Profile "${name}" saved`);
+    this._sendOrchestrationData();
+  }
+
+  private _handleOrchLoadProfile(): void {
+    const services = this._orchestrationService.loadProfile();
+    if (!services) {
+      vscode.window.showWarningMessage('No saved profile found');
+      return;
+    }
+    vscode.window.showInformationMessage('Profile loaded successfully');
+    this._sendOrchestrationData();
   }
 
   // ─────────────────────────────────────────────
@@ -1520,50 +1660,237 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
 
     /* ════════════════════════════════════
-       PLACEHOLDER TABS (Orchestration)
+       ORCHESTRATION TAB
        ════════════════════════════════════ */
 
-    .placeholder-page {
-      text-align: center;
-      padding: 40px 14px;
-    }
-
-    .placeholder-page .ph-icon {
-      font-size: 28px;
-      margin-bottom: 10px;
-    }
-
-    .placeholder-page .ph-title {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-
-    .placeholder-page .ph-desc {
-      font-size: 12px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      max-width: 240px;
-      margin: 0 auto 16px;
-    }
-
-    .ph-btn-group {
+    .orch-action-bar {
       display: flex;
-      flex-direction: column;
       gap: 8px;
-      align-items: center;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.06));
     }
 
-    .ph-btn {
+    .orch-btn {
       font-family: inherit;
-      font-size: 12px;
-      padding: 6px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 12px;
       border-radius: 4px;
       border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
       background: var(--vscode-input-background, rgba(255,255,255,0.06));
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      cursor: not-allowed;
-      width: 180px;
+      color: var(--vscode-editor-foreground);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .orch-btn:hover { border-color: #4fc3f7; background: rgba(79,195,247,0.1); }
+    .orch-btn-primary { background: rgba(79,195,247,0.15); border-color: rgba(79,195,247,0.3); color: #4fc3f7; }
+    .orch-btn-primary:hover { background: rgba(79,195,247,0.25); }
+    .orch-btn-danger { color: #ef5350; }
+    .orch-btn-danger:hover { border-color: #ef5350; background: rgba(239,83,80,0.1); }
+
+    /* Empty state */
+    .orch-empty {
       text-align: center;
+      padding: 40px 14px;
+    }
+    .orch-empty-icon { font-size: 28px; margin-bottom: 10px; }
+    .orch-empty-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .orch-empty-desc {
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+      max-width: 240px;
+      margin: 0 auto;
+    }
+
+    /* Detected services and Service cards */
+    .orch-section-header {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 10px 14px 4px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+      transition: background 0.1s;
+    }
+
+    .orch-section-header:hover {
+      background: rgba(255,255,255,0.04);
+    }
+
+    .orch-collapse-arrow {
+      display: inline-block;
+      width: 10px;
+      transition: transform 0.2s;
+    }
+
+    #detected-header {
+      color: #ffa726;
+    }
+
+    .orch-detected-card {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.04));
+      background: rgba(255,167,38,0.04);
+    }
+
+    .orch-detected-info { flex: 1; min-width: 0; }
+    .orch-detected-name { font-size: 12px; font-weight: 600; }
+    .orch-detected-meta {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+    }
+
+    .orch-detected-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+    .orch-detected-actions .orch-btn { font-size: 10px; padding: 2px 8px; }
+
+    /* Service cards */
+
+    .orch-card {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.04));
+      transition: background 0.1s;
+    }
+
+    .orch-card:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.03));
+    }
+
+    .orch-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .orch-card-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .orch-card-status.running { background: #66bb6a; box-shadow: 0 0 4px rgba(102,187,106,0.5); }
+    .orch-card-status.stopped { background: rgba(255,255,255,0.2); }
+    .orch-card-status.starting { background: #ffa726; animation: pulse 1.2s infinite; }
+    .orch-card-status.error { background: #ef5350; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    .orch-card-info { flex: 1; min-width: 0; }
+
+    .orch-card-name {
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .orch-role-badge {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+
+    .orch-role-badge.frontend { background: rgba(79,195,247,0.15); color: #4fc3f7; }
+    .orch-role-badge.backend  { background: rgba(171,71,188,0.15); color: #ce93d8; }
+    .orch-role-badge.database { background: rgba(255,167,38,0.15); color: #ffa726; }
+    .orch-role-badge.cache    { background: rgba(102,187,106,0.15); color: #66bb6a; }
+    .orch-role-badge.custom   { background: rgba(255,255,255,0.08); color: var(--vscode-descriptionForeground); }
+
+    .orch-card-meta {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+    }
+
+    .orch-card-actions {
+      display: flex;
+      gap: 4px;
+      padding-top: 6px;
+      padding-left: 16px;
+    }
+
+    .orch-card-actions .orch-btn { font-size: 10px; padding: 2px 8px; }
+
+    /* Modal */
+    .orch-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .orch-modal {
+      background: var(--vscode-editor-background, #1e1e1e);
+      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
+      border-radius: 8px;
+      padding: 16px;
+      width: 280px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .orch-modal-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .orch-modal-field {
+      margin-bottom: 10px;
+    }
+
+    .orch-modal-field label {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+      margin-bottom: 4px;
+    }
+
+    .orch-modal-field input,
+    .orch-modal-field select,
+    .orch-modal-field textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
+      background: var(--vscode-input-background, rgba(255,255,255,0.06));
+      color: var(--vscode-editor-foreground);
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .orch-modal-field input:focus,
+    .orch-modal-field select:focus,
+    .orch-modal-field textarea:focus { border-color: #4fc3f7; }
+
+    .orch-modal-field textarea { resize: vertical; min-height: 60px; }
+
+    .orch-modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 12px;
     }
   </style>
 </head>
@@ -1680,10 +2007,57 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   <!-- TAB: ORCHESTRATION -->
   <div class="tab-content" id="tab-orchestration">
-    <div class="placeholder-page">
-      <div class="ph-icon">\u{2699}\u{FE0F}</div>
-      <div class="ph-title">Orchestration</div>
-      <div class="ph-desc">Manage multiple processes at once. Multi-select, batch kill, and process grouping coming soon.</div>
+    <div class="orch-action-bar">
+      <button class="orch-btn orch-btn-primary" id="btn-orch-create">✚ Create Service</button>
+      <button class="orch-btn" id="btn-orch-save-profile">💾 Save Profile</button>
+      <button class="orch-btn" id="btn-orch-load-profile">📂 Load Profile</button>
+    </div>
+
+    <div id="orch-detected-section"></div>
+    <div id="orch-services-section">
+      <div class="orch-empty">
+        <div class="orch-empty-icon">\u{2699}\u{FE0F}</div>
+        <div class="orch-empty-title">No services configured</div>
+        <div class="orch-empty-desc">Detect running dev services or create one manually to orchestrate your local stack.</div>
+      </div>
+    </div>
+
+    <!-- Create/Edit Modal -->
+    <div class="orch-modal-overlay" id="orch-modal" style="display:none;">
+      <div class="orch-modal">
+        <div class="orch-modal-title" id="orch-modal-title">Create Service</div>
+        <div class="orch-modal-field">
+          <label>Name</label>
+          <input type="text" id="orch-input-name" placeholder="e.g. Frontend" />
+        </div>
+        <div class="orch-modal-field">
+          <label>Role</label>
+          <select id="orch-input-role">
+            <option value="frontend">Frontend</option>
+            <option value="backend">Backend</option>
+            <option value="database">Database</option>
+            <option value="cache">Cache</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="orch-modal-field">
+          <label>Port (optional)</label>
+          <input type="number" id="orch-input-port" placeholder="e.g. 3000" />
+        </div>
+        <div class="orch-modal-field">
+          <label>Working Directory</label>
+          <input type="text" id="orch-input-cwd" placeholder="Workspace root" />
+        </div>
+        <div class="orch-modal-field">
+          <label>Start Commands (one per line)</label>
+          <textarea id="orch-input-cmds" rows="4" placeholder="npm install\nnpm run dev"></textarea>
+        </div>
+        <div class="orch-modal-actions">
+          <button class="orch-btn" id="orch-modal-cancel">Cancel</button>
+          <button class="orch-btn orch-btn-primary" id="orch-modal-save">Save</button>
+        </div>
+        <input type="hidden" id="orch-edit-id" value="" />
+      </div>
     </div>
   </div>
 
@@ -2208,7 +2582,220 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         if (btn.dataset.tab === 'snapshots') {
           vscode.postMessage({ type: 'snapshotList' });
         }
+        if (btn.dataset.tab === 'orchestration') {
+          vscode.postMessage({ type: 'orchLoad' });
+        }
       });
+    });
+
+    // ── Orchestration ──
+    let orchData = null;
+
+    let detectedCollapsed = false;
+    let servicesCollapsed = false;
+
+    function renderOrchestration(data) {
+      orchData = data;
+      const detectedEl = document.getElementById('orch-detected-section');
+      const servicesEl = document.getElementById('orch-services-section');
+
+      // Detected services
+      if (data.detected && data.detected.length > 0) {
+        let html = '<div class="orch-section-header" id="detected-header"><span class="orch-collapse-arrow">' + (detectedCollapsed ? '▶' : '▼') + '</span>\u26A1 Detected Services (' + data.detected.length + ')</div>';
+        if (!detectedCollapsed) {
+          html += '<div id="detected-content">';
+          data.detected.forEach((d, i) => {
+            html += '<div class="orch-detected-card" data-idx="' + i + '">';
+            html += '<div class="orch-detected-info">';
+            html += '<div class="orch-detected-name">' + escapeHtml(d.name) + '</div>';
+            html += '<div class="orch-detected-meta">:' + d.port + ' \u00B7 ' + escapeHtml(d.processName) + ' \u00B7 PID ' + d.pid + '</div>';
+            html += '</div>';
+            html += '<div class="orch-detected-actions">';
+            html += '<button class="orch-btn orch-btn-primary orch-accept-btn" data-idx="' + i + '">\u2713 Accept</button>';
+            html += '<button class="orch-btn orch-ignore-btn" data-idx="' + i + '">Ignore</button>';
+            html += '</div>';
+            html += '</div>';
+          });
+          html += '</div>';
+        }
+        detectedEl.innerHTML = html;
+
+        // Bind collapse toggle
+        document.getElementById('detected-header').addEventListener('click', () => {
+          detectedCollapsed = !detectedCollapsed;
+          renderOrchestration(data);
+        });
+
+        // Bind accept/ignore (only if not collapsed)
+        if (!detectedCollapsed) {
+          detectedEl.querySelectorAll('.orch-accept-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const idx = parseInt(btn.dataset.idx);
+              vscode.postMessage({ type: 'orchAcceptDetection', detection: data.detected[idx] });
+            });
+          });
+          detectedEl.querySelectorAll('.orch-ignore-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              btn.closest('.orch-detected-card').remove();
+            });
+          });
+        }
+      } else {
+        detectedEl.innerHTML = '';
+      }
+
+      // Saved services
+      if (!data.services || data.services.length === 0) {
+        servicesEl.innerHTML = '<div class="orch-empty"><div class="orch-empty-icon">\u{2699}\u{FE0F}</div><div class="orch-empty-title">No services configured</div><div class="orch-empty-desc">Detect running dev services or create one manually to orchestrate your local stack.</div></div>';
+        return;
+      }
+
+      let html = '<div class="orch-section-header" id="services-header"><span class="orch-collapse-arrow">' + (servicesCollapsed ? '▶' : '▼') + '</span>Services (' + data.services.length + ')</div>';
+      if (!servicesCollapsed) {
+        html += '<div id="services-content">';
+        data.services.forEach(svc => {
+          html += '<div class="orch-card" data-svc-id="' + svc.id + '">';
+          html += '<div class="orch-card-header">';
+          html += '<div class="orch-card-status ' + svc.status + '"></div>';
+          html += '<div class="orch-card-info">';
+          html += '<div class="orch-card-name">' + escapeHtml(svc.name) + ' <span class="orch-role-badge ' + svc.role + '">' + svc.role + '</span></div>';
+          html += '<div class="orch-card-meta">';
+          if (svc.port) { html += ':' + svc.port + ' \u00B7 '; }
+          html += svc.status;
+          if (svc.linkedPid && svc.status === 'running') { html += ' \u00B7 PID ' + svc.linkedPid; }
+          html += '</div>';
+          html += '</div></div>';
+
+          // Actions
+          html += '<div class="orch-card-actions">';
+          if (svc.status === 'running') {
+            html += '<button class="orch-btn orch-btn-danger orch-stop-btn" data-id="' + svc.id + '">\u23F9 Stop</button>';
+            if (svc.port) {
+              html += '<button class="orch-btn orch-open-btn" data-port="' + svc.port + '">\u{1F310} Open</button>';
+            }
+          } else if (svc.status === 'stopped') {
+            if (svc.startCommands && svc.startCommands.length > 0) {
+              html += '<button class="orch-btn orch-btn-primary orch-start-btn" data-id="' + svc.id + '">\u25B6 Start</button>';
+            }
+          }
+          html += '<button class="orch-btn orch-edit-btn" data-id="' + svc.id + '">\u270F Edit</button>';
+          html += '<button class="orch-btn orch-btn-danger orch-delete-btn" data-id="' + svc.id + '">\u{1F5D1} Delete</button>';
+          html += '</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      servicesEl.innerHTML = html;
+
+      // Bind collapse toggle
+      document.getElementById('services-header').addEventListener('click', () => {
+        servicesCollapsed = !servicesCollapsed;
+        renderOrchestration(data);
+      });
+
+      // Bind actions (only if not collapsed)
+      if (!servicesCollapsed) {
+        servicesEl.querySelectorAll('.orch-start-btn').forEach(btn => {
+          btn.addEventListener('click', () => vscode.postMessage({ type: 'orchStartService', id: btn.dataset.id }));
+        });
+        servicesEl.querySelectorAll('.orch-stop-btn').forEach(btn => {
+          btn.addEventListener('click', () => vscode.postMessage({ type: 'orchStopService', id: btn.dataset.id }));
+        });
+        servicesEl.querySelectorAll('.orch-open-btn').forEach(btn => {
+          btn.addEventListener('click', () => vscode.postMessage({ type: 'orchOpenBrowser', port: parseInt(btn.dataset.port) }));
+        });
+        servicesEl.querySelectorAll('.orch-edit-btn').forEach(btn => {
+          btn.addEventListener('click', () => openOrchModal(btn.dataset.id));
+        });
+        servicesEl.querySelectorAll('.orch-delete-btn').forEach(btn => {
+          btn.addEventListener('click', () => vscode.postMessage({ type: 'orchDeleteService', id: btn.dataset.id }));
+        });
+      }
+    }
+
+    // Modal logic
+    function openOrchModal(editId) {
+      const modal = document.getElementById('orch-modal');
+      const titleEl = document.getElementById('orch-modal-title');
+      const editIdEl = document.getElementById('orch-edit-id');
+
+      // Reset
+      document.getElementById('orch-input-name').value = '';
+      document.getElementById('orch-input-role').value = 'frontend';
+      document.getElementById('orch-input-port').value = '';
+      document.getElementById('orch-input-cwd').value = orchData?.workspaceRoot || '';
+      document.getElementById('orch-input-cmds').value = '';
+      editIdEl.value = '';
+
+      if (editId && orchData) {
+        const svc = orchData.services.find(s => s.id === editId);
+        if (svc) {
+          titleEl.textContent = 'Edit Service';
+          editIdEl.value = svc.id;
+          document.getElementById('orch-input-name').value = svc.name;
+          document.getElementById('orch-input-role').value = svc.role;
+          document.getElementById('orch-input-port').value = svc.port || '';
+          document.getElementById('orch-input-cwd').value = svc.workingDirectory || '';
+          document.getElementById('orch-input-cmds').value = (svc.startCommands || []).join('\\n');
+        }
+      } else {
+        titleEl.textContent = 'Create Service';
+      }
+
+      modal.style.display = 'flex';
+    }
+
+    document.getElementById('btn-orch-create').addEventListener('click', () => openOrchModal(null));
+
+    document.getElementById('orch-modal-cancel').addEventListener('click', () => {
+      document.getElementById('orch-modal').style.display = 'none';
+    });
+
+    document.getElementById('orch-modal-save').addEventListener('click', () => {
+      const name = document.getElementById('orch-input-name').value.trim();
+      if (!name) { return; }
+
+      const role = document.getElementById('orch-input-role').value;
+      const port = document.getElementById('orch-input-port').value;
+      const cwd = document.getElementById('orch-input-cwd').value.trim();
+      const cmds = document.getElementById('orch-input-cmds').value.split('\n').map(c => c.trim()).filter(Boolean);
+      const editId = document.getElementById('orch-edit-id').value;
+
+      // Validate commands
+      if (cmds.length === 0) {
+        alert('Please enter at least one start command');
+        return;
+      }
+
+      // Check for obviously invalid commands
+      const invalidCmds = cmds.filter(c => /^\d+$/.test(c) || c.length === 0);
+      if (invalidCmds.length > 0) {
+        if (!confirm('Some commands look invalid (e.g., "' + invalidCmds[0] + '"). Continue anyway?')) {
+          return;
+        }
+      }
+
+      if (editId) {
+        vscode.postMessage({ type: 'orchEditService', id: editId, updates: { name, role, port: port ? Number(port) : undefined, workingDirectory: cwd, startCommands: cmds } });
+      } else {
+        vscode.postMessage({ type: 'orchCreateService', service: { name, role, port, startCommands: cmds, workingDirectory: cwd } });
+      }
+
+      document.getElementById('orch-modal').style.display = 'none';
+    });
+
+    // Save profile
+    document.getElementById('btn-orch-save-profile').addEventListener('click', () => {
+      const name = prompt('Profile name:');
+      if (name && name.trim()) {
+        vscode.postMessage({ type: 'orchSaveProfile', name: name.trim() });
+      }
+    });
+
+    // Load profile
+    document.getElementById('btn-orch-load-profile').addEventListener('click', () => {
+      vscode.postMessage({ type: 'orchLoadProfile' });
     });
 
     // ── Message handler ──
@@ -2231,6 +2818,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
         case 'snapshotDiff':
           renderDiff(msg.data);
+          break;
+
+        case 'orchUpdate':
+          renderOrchestration(msg.data);
           break;
 
         case 'loadingStart': {
