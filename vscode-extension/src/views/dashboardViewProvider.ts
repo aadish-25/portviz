@@ -420,14 +420,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     const snapshots = this._snapshotService.getAll();
     this._view?.webview.postMessage({
       type: 'snapshotListUpdate',
-      data: snapshots.map(s => ({
-        id: s.id,
-        name: s.name,
-        createdAt: s.createdAt,
-        portCount: s.portCount,
-        publicCount: s.publicCount,
-        processCount: s.processCount
-      }))
+      data: snapshots.map(s => {
+        // Group snapshot data by process for detail view
+        const procMap = new Map<string, { name: string; pid: number; ports: { port: number; ip: string; protocol: string }[] }>();
+        for (const p of s.data) {
+          const key = `${p.process_name ?? 'Unknown'}-${p.pid}`;
+          if (!procMap.has(key)) {
+            procMap.set(key, { name: p.process_name ?? 'Unknown', pid: p.pid, ports: [] });
+          }
+          procMap.get(key)!.ports.push({ port: p.local_port, ip: p.local_ip, protocol: p.protocol });
+        }
+
+        return {
+          id: s.id,
+          name: s.name,
+          createdAt: s.createdAt,
+          portCount: s.portCount,
+          publicCount: s.publicCount,
+          processCount: s.processCount,
+          processes: Array.from(procMap.values())
+        };
+      })
     });
   }
 
@@ -1071,6 +1084,69 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       border-radius: 4px;
     }
 
+    .snap-row { cursor: pointer; position: relative; }
+
+    /* Snapshot detail (expanded view) */
+    .snap-detail {
+      grid-column: 1 / -1;
+      padding: 6px 0 8px 14px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.06));
+    }
+
+    .snap-detail-proc {
+      margin-bottom: 4px;
+    }
+
+    .snap-detail-proc-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--vscode-editor-foreground);
+      margin-bottom: 2px;
+    }
+
+    .snap-detail-proc-meta {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+    }
+
+    .snap-detail-port {
+      font-size: 11px;
+      padding: 1px 0 1px 12px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
+    }
+
+    .snap-detail-port .port-num {
+      color: #42a5f5;
+      font-weight: 600;
+    }
+
+    .snap-detail-port .port-pub {
+      color: #ffa726;
+    }
+
+    /* Empty state */
+    .snap-empty {
+      text-align: center;
+      padding: 30px 14px;
+      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
+    }
+
+    .snap-empty-icon { font-size: 28px; margin-bottom: 8px; }
+
+    .snap-empty-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--vscode-editor-foreground);
+      margin-bottom: 4px;
+    }
+
+    .snap-empty-desc {
+      font-size: 11px;
+      max-width: 220px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
     .snap-name-cell {
       display: flex;
       align-items: center;
@@ -1151,15 +1227,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
 
     .snap-dropdown-item.danger { color: #ef5350; }
-
-    .snap-empty {
-      text-align: center;
-      padding: 30px 0;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      font-size: 12px;
-    }
-
-    .snap-empty .snap-empty-icon { font-size: 24px; margin-bottom: 6px; }
 
     /* Compare section */
     .snap-compare {
@@ -1378,7 +1445,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     <div id="snap-list-section">
       <div class="snap-empty">
         <div class="snap-empty-icon">\u{1F4F8}</div>
-        <div>No snapshots yet. Save one to get started.</div>
+        <div class="snap-empty-title">No Snapshots Yet</div>
+        <div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save Snapshot" to start.</div>
       </div>
     </div>
     <div class="snap-section" id="snap-compare-section" style="display:none;">
@@ -1690,13 +1758,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       return colors[index % colors.length];
     }
 
+    let expandedSnapId = null;
+
     function renderSnapshots(data) {
       snapshotData = data;
       const el = document.getElementById('snap-list-section');
       const compareSection = document.getElementById('snap-compare-section');
 
       if (!data || data.length === 0) {
-        el.innerHTML = '<div class="snap-empty"><div class="snap-empty-icon">\u{1F4F8}</div><div>No snapshots yet. Save one to get started.</div></div>';
+        el.innerHTML = '<div class="snap-empty"><div class="snap-empty-icon">\u{1F4F8}</div><div class="snap-empty-title">No Snapshots Yet</div><div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click \u201CSave Snapshot\u201D to start.</div></div>';
         compareSection.style.display = 'none';
         return;
       }
@@ -1707,12 +1777,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       html += '<div class="snap-table-header"><span>Name</span><span style="text-align:center">Procs</span><span style="text-align:right">Date</span><span></span></div>';
 
       data.forEach((snap, i) => {
+        const isExpanded = expandedSnapId === snap.id;
         html += '<div class="snap-row" data-snap-id="' + snap.id + '">';
-        html += '<div class="snap-name-cell"><span class="snap-dot ' + getSnapDotColor(i) + '"></span><span class="snap-name">' + escapeHtml(snap.name) + '</span></div>';
+        html += '<div class="snap-name-cell"><span class="snap-dot ' + getSnapDotColor(i) + '"></span><span class="snap-name">' + (isExpanded ? '\u25BC ' : '\u25B6 ') + escapeHtml(snap.name) + '</span></div>';
         html += '<span class="snap-ports">' + snap.processCount + '</span>';
         html += '<span class="snap-date">' + timeAgo(snap.createdAt) + '</span>';
         html += '<button class="snap-menu-btn" data-snap-menu="' + snap.id + '" title="More actions">\u22EE</button>';
         html += '</div>';
+
+        if (isExpanded && snap.processes) {
+          html += '<div class="snap-detail">';
+          snap.processes.forEach(proc => {
+            html += '<div class="snap-detail-proc">';
+            html += '<div class="snap-detail-proc-name">' + escapeHtml(proc.name) + ' <span class="snap-detail-proc-meta">PID ' + proc.pid + ' \u00B7 ' + proc.ports.length + ' port' + (proc.ports.length !== 1 ? 's' : '') + '</span></div>';
+            proc.ports.forEach(p => {
+              const cls = p.ip === '0.0.0.0' ? 'port-pub' : 'port-num';
+              html += '<div class="snap-detail-port"><span class="' + cls + '">:' + p.port + '</span> ' + p.ip + '</div>';
+            });
+            html += '</div>';
+          });
+          html += '</div>';
+        }
       });
 
       html += '</div></div>';
@@ -1725,6 +1810,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       } else {
         compareSection.style.display = 'none';
       }
+
+      // Bind row click to expand/collapse
+      document.querySelectorAll('.snap-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.snap-menu-btn')) return;
+          const id = row.dataset.snapId;
+          expandedSnapId = expandedSnapId === id ? null : id;
+          renderSnapshots(snapshotData);
+        });
+      });
 
       // Bind menu buttons
       document.querySelectorAll('[data-snap-menu]').forEach(btn => {
