@@ -1913,7 +1913,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       const compareSection = document.getElementById('snap-compare-section');
 
       if (!data || data.length === 0) {
-        el.innerHTML = '<div class="snap-empty"><div class="snap-empty-icon">\u{1F4F8}</div><div class="snap-empty-title">No snapshots saved</div><div class="snap-empty-desc">Capture your current port state and compare it later to detect changes.</div><button class="snap-cta" onclick="vscode.postMessage({type:\'snapshotSave\'})">\u{2795} Save Snapshot</button></div>';
+        el.innerHTML = '<div class="snap-empty"><div class="snap-empty-icon">\u{1F4F8}</div><div class="snap-empty-title">No snapshots saved</div><div class="snap-empty-desc">Capture your current port state and compare it later to detect changes.</div><button class="snap-cta" id="snap-cta-dynamic">\u{2795} Save Snapshot</button></div>';
+        const ctaBtn = document.getElementById('snap-cta-dynamic');
+        if (ctaBtn) { ctaBtn.addEventListener('click', () => vscode.postMessage({ type: 'snapshotSave' })); }
         compareSection.style.display = 'none';
         return;
       }
