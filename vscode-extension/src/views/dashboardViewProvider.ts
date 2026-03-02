@@ -1779,7 +1779,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       data.forEach((snap, i) => {
         const isExpanded = expandedSnapId === snap.id;
         html += '<div class="snap-row" data-snap-id="' + snap.id + '">';
-        html += '<div class="snap-name-cell"><span class="snap-dot ' + getSnapDotColor(i) + '"></span><span class="snap-name">' + (isExpanded ? '\u25BC ' : '\u25B6 ') + escapeHtml(snap.name) + '</span></div>';
+        html += '<div class="snap-name-cell"><span class="snap-dot ' + getSnapDotColor(i) + '"></span><span class="snap-name">' + escapeHtml(snap.name) + '</span></div>';
         html += '<span class="snap-ports">' + snap.processCount + '</span>';
         html += '<span class="snap-date">' + timeAgo(snap.createdAt) + '</span>';
         html += '<button class="snap-menu-btn" data-snap-menu="' + snap.id + '" title="More actions">\u22EE</button>';
