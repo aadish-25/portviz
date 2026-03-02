@@ -1127,6 +1127,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       display: flex;
       flex-direction: column;
       gap: 8px;
+      padding-right: 36px;
     }
 
     .snap-swap-btn {
