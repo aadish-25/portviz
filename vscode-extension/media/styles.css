@@ -436,6 +436,51 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Resource Badges ── */
+.resource-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.badge-resource {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.badge-resource svg {
+  flex-shrink: 0;
+}
+
+.badge-resource.res-low {
+  background: rgba(60, 180, 100, 0.15);
+  color: #4ec87a;
+}
+
+.badge-resource.res-med {
+  background: rgba(220, 160, 50, 0.15);
+  color: #dcaa40;
+}
+
+.badge-resource.res-high {
+  background: rgba(220, 70, 70, 0.15);
+  color: #e05555;
+}
+
+.badge-resource.res-mem {
+  background: rgba(100, 140, 220, 0.15);
+  color: #7ba5e0;
+}
+
 /* Port rows */
 .port-list {
   padding-left: 30px;
@@ -1124,6 +1169,7 @@ body {
 .orch-section {
   padding: 12px 14px;
   margin-bottom: 0;
+  overflow: visible;
 }
 
 .orch-section-title {
@@ -1145,19 +1191,25 @@ body {
   cursor: pointer;
   user-select: none;
   border-radius: 4px;
-  padding: 4px 6px;
-  margin: -4px -6px 6px -6px;
+  padding: 6px 6px;
+  margin: -6px -6px 6px -6px;
   transition: background 0.15s;
+  position: relative;
+  z-index: 1;
 }
 
 .orch-section.collapsed .orch-section-title {
   margin-bottom: 0;
-  padding-bottom: 0;
+  padding-bottom: 6px;
   border-bottom: none;
 }
 
+.orch-section.collapsed .orch-section-toggle {
+  margin-bottom: 0;
+}
+
 .orch-section.collapsed {
-  padding-bottom: 4px;
+  padding-bottom: 6px;
 }
 
 .orch-section-toggle:hover {

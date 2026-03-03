@@ -5,9 +5,10 @@ let activeTab = "overview";
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     activeTab = btn.dataset.tab;
-    document
-      .querySelectorAll(".tab-btn")
-      .forEach((b) => { b.classList.remove("active"); b.setAttribute("aria-selected", "false"); });
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-selected", "false");
+    });
     document
       .querySelectorAll(".tab-content")
       .forEach((c) => c.classList.remove("active"));
@@ -160,17 +161,18 @@ function getPortColorClass(port) {
 
 function escapeHtml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // ── LIVE state ──
 let expandedPids = new Set();
 let currentLiveData = [];
 let newPidSet = new Set();
+let currentResources = {}; // pid → { cpu, memoryMB }
 
 function renderLive(data) {
   currentLiveData = data;
@@ -210,6 +212,21 @@ function renderLive(data) {
       proc.pid +
       "</span>";
     html += "</div>";
+
+    // Resource badges (CPU / memory)
+    const res = currentResources[proc.pid];
+    if (res) {
+      html += '<div class="resource-badges">';
+      const cpuClass = res.cpu > 80 ? 'res-high' : res.cpu > 40 ? 'res-med' : 'res-low';
+      html += '<span class="badge-resource ' + cpuClass + '" title="CPU usage">' +
+        '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg> ' +
+        res.cpu.toFixed(1) + '%</span>';
+      html += '<span class="badge-resource res-mem" title="Memory usage">' +
+        '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="3" width="12" height="18" rx="1"/><line x1="6" y1="7" x2="18" y2="7"/><line x1="6" y1="11" x2="18" y2="11"/></svg> ' +
+        res.memoryMB.toFixed(1) + ' MB</span>';
+      html += '</div>';
+    }
+
     html += '<div class="process-actions">';
     html +=
       '<button class="btn-action kill-btn" data-kill-pid="' +
@@ -525,7 +542,7 @@ function renderSnapshots(data) {
 
   if (!data || data.length === 0) {
     el.innerHTML =
-      '<div class="snap-empty"><div class="snap-empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14a1 1 0 0 1 1 1v16l-5-3-5 3V4a1 1 0 0 1 1-1z"/></svg></div><div class="snap-empty-title">No snapshots saved</div><div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div><button class="snap-cta" id="snap-cta-dynamic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Capture Current State</button></div>';
+      '<div class="snap-empty"><div class="snap-empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><div class="snap-empty-title">No snapshots saved</div><div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div><button class="snap-cta" id="snap-cta-dynamic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Capture Current State</button></div>';
     const ctaBtn = document.getElementById("snap-cta-dynamic");
     if (ctaBtn) {
       ctaBtn.addEventListener("click", () =>
@@ -899,7 +916,11 @@ function orchCloseModal() {
     } else if (e.key === "Escape") {
       dropdown.classList.remove("open");
       selected.setAttribute("aria-expanded", "false");
-    } else if (e.key === "ArrowDown" && dropdown.classList.contains("open") && options.length > 0) {
+    } else if (
+      e.key === "ArrowDown" &&
+      dropdown.classList.contains("open") &&
+      options.length > 0
+    ) {
       e.preventDefault();
       options[0].focus();
     }
@@ -997,7 +1018,12 @@ function orchFormSubmit() {
 
   // Validate port range
   const portRaw = document.getElementById("orch-input-port").value.trim();
-  if (portRaw !== "" && (isNaN(parseInt(portRaw)) || parseInt(portRaw) < 0 || parseInt(portRaw) > 65535)) {
+  if (
+    portRaw !== "" &&
+    (isNaN(parseInt(portRaw)) ||
+      parseInt(portRaw) < 0 ||
+      parseInt(portRaw) > 65535)
+  ) {
     showFieldError("orch-input-port", "Port must be between 0 and 65535");
   }
 
@@ -1197,7 +1223,9 @@ function renderOrchestration(detected, saved, groups) {
     const ungrouped = [];
     saved.forEach(function (svc) {
       if (svc.group) {
-        if (!stackMap[svc.group]) { stackMap[svc.group] = []; }
+        if (!stackMap[svc.group]) {
+          stackMap[svc.group] = [];
+        }
         stackMap[svc.group].push(svc);
       } else {
         ungrouped.push(svc);
@@ -1226,32 +1254,76 @@ function renderOrchestration(detected, saved, groups) {
               ? '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
               : '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';
       const roleStyleClass = "orch-saved-" + role;
-      let c = '<div class="orch-item orch-item-saved ' + roleStyleClass + ' orch-item-' + status + '">';
+      let c =
+        '<div class="orch-item orch-item-saved ' +
+        roleStyleClass +
+        " orch-item-" +
+        status +
+        '">';
       c += '<div class="orch-item-header">';
-      c += '<div class="orch-item-status ' + statusClass + '">' + statusIcon + '</div>';
+      c +=
+        '<div class="orch-item-status ' +
+        statusClass +
+        '">' +
+        statusIcon +
+        "</div>";
       c += '<div class="orch-item-info">';
-      c += '<div class="orch-item-name">' + escapeHtml(svc.name) + '</div>';
+      c += '<div class="orch-item-name">' + escapeHtml(svc.name) + "</div>";
       if (svc.port) {
-        c += '<div class="orch-item-detail"><span class="orch-port-badge">:' + svc.port + '</span> · ' + escapeHtml(status) + '</div>';
+        c +=
+          '<div class="orch-item-detail"><span class="orch-port-badge">:' +
+          svc.port +
+          "</span> · " +
+          escapeHtml(status) +
+          "</div>";
       } else {
-        c += '<div class="orch-item-detail">' + escapeHtml(status) + '</div>';
+        c += '<div class="orch-item-detail">' + escapeHtml(status) + "</div>";
       }
-      c += '</div>';
-      c += '<div class="orch-item-role ' + roleClass + '">' + getRoleIcon(role) + ' ' + escapeHtml(role) + '</div>';
-      c += '</div>';
+      c += "</div>";
+      c +=
+        '<div class="orch-item-role ' +
+        roleClass +
+        '">' +
+        getRoleIcon(role) +
+        " " +
+        escapeHtml(role) +
+        "</div>";
+      c += "</div>";
       // Env vars indicator
       if (svc.envVars && Object.keys(svc.envVars).length > 0) {
         const envCount = Object.keys(svc.envVars).length;
-        c += '<div class="orch-item-env-badge" title="' + envCount + ' environment variable' + (envCount !== 1 ? 's' : '') + ' configured"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> ' + envCount + ' env</div>';
+        c +=
+          '<div class="orch-item-env-badge" title="' +
+          envCount +
+          " environment variable" +
+          (envCount !== 1 ? "s" : "") +
+          ' configured"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> ' +
+          envCount +
+          " env</div>";
       }
       c += '<div class="orch-item-actions">';
-      c += '<button class="orch-action-btn orch-btn-start" data-orch-start-id="' + escapeHtml(svc.id) + '" title="Start service in integrated terminal"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
-      c += '<button class="orch-action-btn orch-btn-stop" data-orch-stop-id="' + escapeHtml(svc.id) + '" title="Stop service and close terminal"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>';
-      c += '<button class="orch-action-btn orch-btn-edit" data-orch-edit-id="' + escapeHtml(svc.id) + '" title="Edit service configuration"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
-      c += '<button class="orch-action-btn orch-btn-duplicate" data-orch-dup-id="' + escapeHtml(svc.id) + '" title="Duplicate this service"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>';
-      c += '<button class="orch-action-btn orch-btn-delete" data-orch-delete-id="' + escapeHtml(svc.id) + '" title="Delete this service permanently"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg></button>';
-      c += '</div>';
-      c += '</div>';
+      c +=
+        '<button class="orch-action-btn orch-btn-start" data-orch-start-id="' +
+        escapeHtml(svc.id) +
+        '" title="Start service in integrated terminal"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
+      c +=
+        '<button class="orch-action-btn orch-btn-stop" data-orch-stop-id="' +
+        escapeHtml(svc.id) +
+        '" title="Stop service and close terminal"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>';
+      c +=
+        '<button class="orch-action-btn orch-btn-edit" data-orch-edit-id="' +
+        escapeHtml(svc.id) +
+        '" title="Edit service configuration"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
+      c +=
+        '<button class="orch-action-btn orch-btn-duplicate" data-orch-dup-id="' +
+        escapeHtml(svc.id) +
+        '" title="Duplicate this service"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>';
+      c +=
+        '<button class="orch-action-btn orch-btn-delete" data-orch-delete-id="' +
+        escapeHtml(svc.id) +
+        '" title="Delete this service permanently"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg></button>';
+      c += "</div>";
+      c += "</div>";
       return c;
     }
 
@@ -1262,31 +1334,53 @@ function renderOrchestration(detected, saved, groups) {
     stackNames.forEach(function (groupName) {
       const services = stackMap[groupName];
       const isCollapsed = orchCollapsedStacks.has(groupName);
-      html += '<div class="orch-stack' + (isCollapsed ? ' collapsed' : '') + '" data-stack-name="' + escapeHtml(groupName) + '">';
+      html +=
+        '<div class="orch-stack' +
+        (isCollapsed ? " collapsed" : "") +
+        '" data-stack-name="' +
+        escapeHtml(groupName) +
+        '">';
       // Stack header
-      html += '<div class="orch-stack-header" data-stack-toggle="' + escapeHtml(groupName) + '">';
-      html += '<div class="orch-stack-toggle-icon"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>';
+      html +=
+        '<div class="orch-stack-header" data-stack-toggle="' +
+        escapeHtml(groupName) +
+        '">';
+      html +=
+        '<div class="orch-stack-toggle-icon"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>';
       html += '<div class="orch-stack-title">';
-      html += '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-      html += ' <span>' + escapeHtml(groupName) + '</span>';
-      html += '<span class="orch-stack-count">' + services.length + '</span>';
-      html += '</div>';
+      html +=
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+      html += " <span>" + escapeHtml(groupName) + "</span>";
+      html += '<span class="orch-stack-count">' + services.length + "</span>";
+      html += "</div>";
       html += '<div class="orch-stack-actions">';
-      html += '<button class="orch-action-btn orch-btn-add" data-stack-add="' + escapeHtml(groupName) + '" title="Add new service to this stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>';
-      html += '<button class="orch-action-btn orch-btn-start" data-stack-start="' + escapeHtml(groupName) + '" title="Start all services in this stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
-      html += '<button class="orch-action-btn orch-btn-ungroup" data-stack-ungroup="' + escapeHtml(groupName) + '" title="Ungroup: keep services but remove from stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M8 3h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>';
-      html += '<button class="orch-action-btn orch-btn-delete" data-stack-delete="' + escapeHtml(groupName) + '" title="Delete all services in this stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg></button>';
-      html += '</div>';
-      html += '</div>';
+      html +=
+        '<button class="orch-action-btn orch-btn-add" data-stack-add="' +
+        escapeHtml(groupName) +
+        '" title="Add new service to this stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>';
+      html +=
+        '<button class="orch-action-btn orch-btn-start" data-stack-start="' +
+        escapeHtml(groupName) +
+        '" title="Start all services in this stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
+      html +=
+        '<button class="orch-action-btn orch-btn-ungroup" data-stack-ungroup="' +
+        escapeHtml(groupName) +
+        '" title="Ungroup: keep services but remove from stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M8 3h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>';
+      html +=
+        '<button class="orch-action-btn orch-btn-delete" data-stack-delete="' +
+        escapeHtml(groupName) +
+        '" title="Delete all services in this stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg></button>';
+      html += "</div>";
+      html += "</div>";
       // Stack body (collapsible)
       html += '<div class="orch-stack-body">';
       html += '<div class="orch-stack-body-inner">';
       services.forEach(function (svc) {
         html += buildCardHtml(svc);
       });
-      html += '</div>';
-      html += '</div>';
-      html += '</div>';
+      html += "</div>";
+      html += "</div>";
+      html += "</div>";
     });
 
     // Render ungrouped services
@@ -1301,11 +1395,13 @@ function renderOrchestration(detected, saved, groups) {
     savedList.querySelectorAll("[data-stack-toggle]").forEach(function (hdr) {
       hdr.addEventListener("click", function (e) {
         // Don't toggle if clicking an action button
-        if (e.target.closest('.orch-stack-actions')) { return; }
+        if (e.target.closest(".orch-stack-actions")) {
+          return;
+        }
         const gName = this.dataset.stackToggle;
-        const stackEl = this.closest('.orch-stack');
-        stackEl.classList.toggle('collapsed');
-        if (stackEl.classList.contains('collapsed')) {
+        const stackEl = this.closest(".orch-stack");
+        stackEl.classList.toggle("collapsed");
+        if (stackEl.classList.contains("collapsed")) {
           orchCollapsedStacks.add(gName);
         } else {
           orchCollapsedStacks.delete(gName);
@@ -1325,7 +1421,10 @@ function renderOrchestration(detected, saved, groups) {
     savedList.querySelectorAll("[data-stack-start]").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
-        vscode.postMessage({ type: 'orchStartGroup', group: this.dataset.stackStart });
+        vscode.postMessage({
+          type: "orchStartGroup",
+          group: this.dataset.stackStart,
+        });
       });
     });
 
@@ -1333,7 +1432,10 @@ function renderOrchestration(detected, saved, groups) {
     savedList.querySelectorAll("[data-stack-ungroup]").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
-        vscode.postMessage({ type: 'orchUngroupStack', group: this.dataset.stackUngroup });
+        vscode.postMessage({
+          type: "orchUngroupStack",
+          group: this.dataset.stackUngroup,
+        });
       });
     });
 
@@ -1342,15 +1444,20 @@ function renderOrchestration(detected, saved, groups) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         if (this.dataset.confirmPending === "true") {
-          vscode.postMessage({ type: 'orchDeleteStack', group: this.dataset.stackDelete });
+          vscode.postMessage({
+            type: "orchDeleteStack",
+            group: this.dataset.stackDelete,
+          });
         } else {
           this.dataset.confirmPending = "true";
           this.classList.add("orch-btn-confirm-delete");
-          this.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Sure?';
+          this.innerHTML =
+            '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Sure?';
           setTimeout(() => {
             this.dataset.confirmPending = "false";
             this.classList.remove("orch-btn-confirm-delete");
-            this.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg>';
+            this.innerHTML =
+              '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg>';
           }, 3000);
         }
       });
@@ -1452,8 +1559,16 @@ window.addEventListener("message", (event) => {
   switch (msg.type) {
     case "liveUpdate":
       newPidSet = new Set(msg.newPids || []);
+      if (msg.resources) { currentResources = msg.resources; }
       renderLive(msg.data);
       updateFooter(msg.summary);
+      break;
+
+    case "resourceUpdate":
+      currentResources = msg.data || {};
+      if (currentLiveData.length > 0) {
+        renderLive(currentLiveData);
+      }
       break;
 
     case "overviewUpdate":
