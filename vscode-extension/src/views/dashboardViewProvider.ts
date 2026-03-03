@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { CliRunner } from '../services/cliRunner';
 import { SnapshotService } from '../services/snapshotService';
 import { OrchestrationService } from '../services/orchestrationService';
+import { NotificationService } from '../services/notificationService';
+import { ResourceMonitor } from '../services/resourceMonitor';
 import { PortEntry } from '../types/report';
 
 // ─── Data Types ───
@@ -35,10 +37,30 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private _isRefreshing = false;
   private readonly _snapshotService: SnapshotService;
   private readonly _orchestrationService: OrchestrationService;
+  private readonly _notificationService: NotificationService;
+  private readonly _resourceMonitor: ResourceMonitor;
 
-  constructor(private readonly _extensionUri: vscode.Uri, globalState: vscode.Memento, orchestrationService: OrchestrationService) {
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    globalState: vscode.Memento,
+    orchestrationService: OrchestrationService,
+    notificationService: NotificationService,
+    resourceMonitor: ResourceMonitor
+  ) {
     this._snapshotService = new SnapshotService(globalState);
     this._orchestrationService = orchestrationService;
+    this._notificationService = notificationService;
+    this._resourceMonitor = resourceMonitor;
+
+    // Forward resource updates to webview
+    this._resourceMonitor.onUpdate((cache) => {
+      if (!this._view) { return; }
+      const resources: Record<number, { cpu: number; memoryMB: number }> = {};
+      for (const [pid, r] of cache) {
+        resources[pid] = { cpu: r.cpu, memoryMB: r.memoryMB };
+      }
+      this._view.webview.postMessage({ type: 'resourceUpdate', data: resources });
+    });
   }
 
   public resolveWebviewView(
@@ -138,6 +160,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         case 'orchDeleteStack':
           await this._handleOrchDeleteStack(msg.group);
           break;
+
+        // ── Watch port notifications ──
+        case 'watchPort':
+          this._notificationService.addWatch(msg.port);
+          break;
+        case 'unwatchPort':
+          this._notificationService.removeWatch(msg.port);
+          break;
       }
     });
 
@@ -170,6 +200,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this._sendOverviewData();
       this._sendSnapshotList();
       this._sendOrchestrationData();
+
+      // Notification service: detect port changes
+      this._notificationService.check(this._rawData);
+
+      // Resource monitor: track active PIDs
+      const activePids = this._rawData
+        .filter(p => p.protocol === 'TCP' && p.state === 'LISTENING')
+        .map(p => p.pid);
+      this._resourceMonitor.track(activePids);
+      this._resourceMonitor.startPolling();
     } catch (error) {
       vscode.window.showErrorMessage('Refresh failed: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
@@ -231,10 +271,20 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
+    // Gather resource data for all visible PIDs
+    const visiblePids = groups.map(g => g.pid);
+    const resourceData = this._resourceMonitor.getFor(visiblePids);
+    const resources: Record<number, { cpu: number; memoryMB: number }> = {};
+    for (const pid of visiblePids) {
+      const r = resourceData[pid];
+      if (r) { resources[pid] = { cpu: r.cpu, memoryMB: r.memoryMB }; }
+    }
+
     this._view.webview.postMessage({
       type: 'liveUpdate',
       data: groups,
       newPids,
+      resources,
       summary: {
         processes: allGroups.length,
         ports: totalPortsAll,
@@ -415,7 +465,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private _handleAutoRefresh(enabled: boolean): void {
     this._clearAutoRefresh();
     if (enabled) {
-      this._autoRefreshInterval = setInterval(() => { this.refresh(); }, 5000);
+      const intervalSec = vscode.workspace.getConfiguration('portviz').get<number>('autoRefreshInterval', 5);
+      this._autoRefreshInterval = setInterval(() => { this.refresh(); }, intervalSec * 1000);
     }
   }
 
@@ -758,7 +809,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           <input type="checkbox" id="toggle-auto-refresh" />
           <span class="toggle-slider"></span>
         </label>
-        <label for="toggle-auto-refresh">Auto Refresh (5s)</label>
+        <label for="toggle-auto-refresh">Auto Refresh</label>
       </div>
       <div class="controls-sep"></div>
       <div class="sort-group">
@@ -782,7 +833,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     </div>
     <div id="snap-list-section">
       <div class="snap-empty">
-        <div class="snap-empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+        <div class="snap-empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
         <div class="snap-empty-title">No snapshots saved</div>
         <div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div>
         <button class="snap-cta" id="btn-save-snapshot-cta"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Capture Current State</button>
