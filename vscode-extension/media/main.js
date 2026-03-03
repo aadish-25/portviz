@@ -217,14 +217,21 @@ function renderLive(data) {
     const res = currentResources[proc.pid];
     if (res) {
       html += '<div class="resource-badges">';
-      const cpuClass = res.cpu > 80 ? 'res-high' : res.cpu > 40 ? 'res-med' : 'res-low';
-      html += '<span class="badge-resource ' + cpuClass + '" title="CPU usage">' +
+      const cpuClass =
+        res.cpu > 80 ? "res-high" : res.cpu > 40 ? "res-med" : "res-low";
+      html +=
+        '<span class="badge-resource ' +
+        cpuClass +
+        '" title="CPU usage">' +
         '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg> ' +
-        res.cpu.toFixed(1) + '%</span>';
-      html += '<span class="badge-resource res-mem" title="Memory usage">' +
+        res.cpu.toFixed(1) +
+        "%</span>";
+      html +=
+        '<span class="badge-resource res-mem" title="Memory usage">' +
         '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="3" width="12" height="18" rx="1"/><line x1="6" y1="7" x2="18" y2="7"/><line x1="6" y1="11" x2="18" y2="11"/></svg> ' +
-        res.memoryMB.toFixed(1) + ' MB</span>';
-      html += '</div>';
+        res.memoryMB.toFixed(1) +
+        " MB</span>";
+      html += "</div>";
     }
 
     html += '<div class="process-actions">';
@@ -1559,7 +1566,9 @@ window.addEventListener("message", (event) => {
   switch (msg.type) {
     case "liveUpdate":
       newPidSet = new Set(msg.newPids || []);
-      if (msg.resources) { currentResources = msg.resources; }
+      if (msg.resources) {
+        currentResources = msg.resources;
+      }
       renderLive(msg.data);
       updateFooter(msg.summary);
       break;

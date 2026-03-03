@@ -980,7 +980,7 @@ body {
 /* Diff results */
 .snap-diff {
   margin-top: 8px;
-  padding-bottom: 8px;
+  padding: 0 8px 8px 14px;
 }
 
 .snap-diff-context {
@@ -1029,7 +1029,7 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: var(--vscode-editor-foreground);
-  padding: 4px 0 2px;
+  padding: 4px 0 2px 14px;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.04));
 }
 

@@ -66,7 +66,7 @@ export class NotificationService {
                     events.push(evt);
                     this._onPortChange.fire(evt);
                     vscode.window.showWarningMessage(
-                        `⚠️ Public port detected: :${entry.local_port} (${name}, PID ${entry.pid}) is accessible on 0.0.0.0`
+                        `Public port detected: :${entry.local_port} (${name}, PID ${entry.pid}) is accessible on 0.0.0.0`
                     );
                 } else if (notifyOpened) {
                     const evt: PortChangeEvent = { type: 'opened', port: entry.local_port, process: name, pid: entry.pid, ip: entry.local_ip };
@@ -80,7 +80,7 @@ export class NotificationService {
                 // Check watched ports
                 if (this._watchedPorts.has(entry.local_port)) {
                     vscode.window.showInformationMessage(
-                        `🔔 Watched port :${entry.local_port} is now active (${name})`
+                        `Watched port :${entry.local_port} is now active (${name})`
                     );
                 }
             }
@@ -102,7 +102,7 @@ export class NotificationService {
 
                 if (this._watchedPorts.has(entry.local_port)) {
                     vscode.window.showWarningMessage(
-                        `🔔 Watched port :${entry.local_port} went down (was ${name})`
+                        `Watched port :${entry.local_port} went down (was ${name})`
                     );
                 }
             }
