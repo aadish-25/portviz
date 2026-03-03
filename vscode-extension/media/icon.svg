@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Gauge arc -->
+  <path d="M 5.5 17 A 8.5 8.5 0 1 1 18.5 17"/>
+  <!-- Tick marks -->
+  <line x1="7.5" y1="8" x2="8.5" y2="9"/>
+  <line x1="12" y1="5.5" x2="12" y2="7"/>
+  <line x1="16.5" y1="8" x2="15.5" y2="9"/>
+  <!-- Needle -->
+  <line x1="12" y1="13" x2="16" y2="8" stroke-width="2"/>
+  <!-- Center dot -->
+  <circle cx="12" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+  <!-- Port dots -->
+  <circle cx="6" cy="17" r="1.2" fill="currentColor" stroke="none"/>
+  <circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none"/>
+  <circle cx="18" cy="17" r="1.2" fill="currentColor" stroke="none"/>
+</svg>
