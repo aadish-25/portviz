@@ -151,14 +151,8 @@ export class SnapshotService {
     };
   }
 
-  /** Estimate storage size in bytes */
-  getStorageSize(): number {
-    const all = this.getAll();
-    return new TextEncoder().encode(JSON.stringify(all)).length;
-  }
-
-  private _persist(snapshots: Snapshot[]): void {
-    this._state.update(STORAGE_KEY, snapshots);
+  private async _persist(snapshots: Snapshot[]): Promise<void> {
+    await this._state.update(STORAGE_KEY, snapshots);
   }
 
   private _generateId(): string {
