@@ -10,6 +10,10 @@ export interface Service {
   workingDirectory: string;
   autoDetected: boolean;
   linkedPid?: number;
+  /** Optional environment variables applied when starting the service */
+  envVars?: Record<string, string>;
+  /** Optional logical group/stack name for bulk operations */
+  group?: string;
 }
 
 export interface ServiceState extends Service {
@@ -23,11 +27,6 @@ export interface DetectedService {
   pid: number;
   processName: string;
   framework?: string;
-}
-
-export interface ProjectProfile {
-  projectName: string;
-  services: Service[];
 }
 
 /** Port → role + hint mapping for auto-detection */

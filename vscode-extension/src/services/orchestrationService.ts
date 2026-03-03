@@ -1,13 +1,12 @@
 import * as vscode from 'vscode';
 import { PortEntry } from '../types/report';
 import {
-  Service, ServiceRole, ServiceState, ServiceStatus,
-  DetectedService, ProjectProfile,
+  Service, ServiceState, ServiceStatus,
+  DetectedService,
   PORT_ROLE_MAP, PROCESS_HINTS
 } from '../types/orchestration';
 
 const STORAGE_KEY = 'portviz.orchestration.services';
-const PROFILE_KEY = 'portviz.orchestration.profile';
 
 export class OrchestrationService {
 
@@ -20,10 +19,30 @@ export class OrchestrationService {
   /** Track start times for timeout detection */
   private _startTimes = new Map<string, number>();
 
-  /** Service start timeout in milliseconds (10 seconds) */
-  private readonly START_TIMEOUT = 10000;
+  /** Services that failed to start (timed out) */
+  private _errorIds = new Set<string>();
 
-  constructor(private readonly _state: vscode.Memento) { }
+  /** Service start timeout in milliseconds (30 seconds) */
+  private readonly START_TIMEOUT = 30000;
+
+  /** Disposables for cleanup */
+  private _disposables: vscode.Disposable[] = [];
+
+  constructor(private readonly _state: vscode.Memento) {
+    // Clean up stale terminal references when user closes a terminal
+    this._disposables.push(
+      vscode.window.onDidCloseTerminal((closed) => {
+        for (const [id, terminal] of this._terminals) {
+          if (terminal === closed) {
+            this._terminals.delete(id);
+            this._startingIds.delete(id);
+            this._startTimes.delete(id);
+            break;
+          }
+        }
+      })
+    );
+  }
 
   // ─── DETECTION ──────────────────────────────
 
@@ -76,45 +95,13 @@ export class OrchestrationService {
     const all = this.getSavedServices();
     const idx = all.findIndex(s => s.id === service.id);
     if (idx >= 0) { all[idx] = service; } else { all.push(service); }
-    this._state.update(STORAGE_KEY, all);
+    this._persist(all);
   }
 
   deleteService(id: string): void {
     const all = this.getSavedServices().filter(s => s.id !== id);
-    this._state.update(STORAGE_KEY, all);
+    this._persist(all);
     this._disposeTerminal(id);
-  }
-
-  createServiceFromDetection(detected: DetectedService, workingDirectory: string): Service {
-    const service: Service = {
-      id: this._generateId(),
-      name: detected.name,
-      role: detected.role,
-      port: detected.port,
-      startCommands: [],
-      workingDirectory,
-      autoDetected: true,
-      linkedPid: detected.pid
-    };
-    this.saveService(service);
-    return service;
-  }
-
-  createManualService(
-    name: string, role: ServiceRole, port: number | undefined,
-    startCommands: string[], workingDirectory: string
-  ): Service {
-    const service: Service = {
-      id: this._generateId(),
-      name,
-      role,
-      ...(port !== undefined && { port }),
-      startCommands,
-      workingDirectory,
-      autoDetected: false
-    };
-    this.saveService(service);
-    return service;
   }
 
   updateService(id: string, updates: Partial<Omit<Service, 'id'>>): void {
@@ -122,7 +109,25 @@ export class OrchestrationService {
     const svc = all.find(s => s.id === id);
     if (!svc) { return; }
     Object.assign(svc, updates);
-    this._state.update(STORAGE_KEY, all);
+    this._persist(all);
+  }
+
+  /**
+   * Remove the group property from all services in a given group.
+   */
+  removeGroupFromServices(group: string): void {
+    const all = this.getSavedServices();
+    for (const svc of all) {
+      if (svc.group === group) {
+        delete svc.group;
+      }
+    }
+    this._persist(all);
+  }
+
+  /** Generate a unique service ID */
+  generateId(): string {
+    return this._generateId();
   }
 
   // ─── STATUS RECONCILIATION ──────────────────
@@ -148,6 +153,13 @@ export class OrchestrationService {
       if (startTime && (now - startTime) > this.START_TIMEOUT) {
         this._startingIds.delete(serviceId);
         this._startTimes.delete(serviceId);
+        this._errorIds.add(serviceId);
+        // Find service name for the error message
+        const svc = saved.find(s => s.id === serviceId);
+        const svcName = svc ? svc.name : 'Unknown';
+        vscode.window.showErrorMessage(
+          `Service "${svcName}" did not start within ${this.START_TIMEOUT / 1000}s. Check its commands, working directory, and port configuration.`
+        );
       }
     }
 
@@ -156,6 +168,8 @@ export class OrchestrationService {
 
       if (this._startingIds.has(svc.id)) {
         status = 'starting';
+      } else if (this._errorIds.has(svc.id)) {
+        status = 'error';
       } else if (svc.port && listeningPorts.has(svc.port)) {
         status = 'running';
         // Update linked PID from live data
@@ -178,23 +192,25 @@ export class OrchestrationService {
 
     this._startingIds.add(service.id);
     this._startTimes.set(service.id, Date.now());
+    this._errorIds.delete(service.id); // Clear previous error on retry
 
     // Reuse or create terminal
     let terminal = this._terminals.get(service.id);
     if (!terminal || terminal.exitStatus !== undefined) {
       terminal = vscode.window.createTerminal({
         name: `Portviz: ${service.name}`,
-        cwd: service.workingDirectory
+        cwd: service.workingDirectory,
+        ...(service.envVars ? { env: service.envVars } : {}),
       });
       this._terminals.set(service.id, terminal);
     }
 
     terminal.show(false);
 
-    // Send commands sequentially via && chaining
-    // For multi-command (e.g. venv activate), keep same session
-    const cmdChain = service.startCommands.join(' && ');
-    terminal.sendText(cmdChain);
+    // Send commands one-by-one to support PowerShell 5.1 (which lacks && operator)
+    for (const cmd of service.startCommands) {
+      terminal.sendText(cmd);
+    }
   }
 
   stopService(service: Service): void {
@@ -205,57 +221,14 @@ export class OrchestrationService {
     this._terminals.delete(service.id);
     this._startingIds.delete(service.id);
     this._startTimes.delete(service.id);
-  }
-
-  // ─── PROJECT PROFILES ───────────────────────
-
-  getProfile(): ProjectProfile | undefined {
-    return this._state.get<ProjectProfile>(PROFILE_KEY);
-  }
-
-  saveProfile(name: string): void {
-    const services = this.getSavedServices();
-    this._state.update(PROFILE_KEY, { projectName: name, services });
-  }
-
-  loadProfile(): Service[] | undefined {
-    const profile = this.getProfile();
-    if (!profile) { return undefined; }
-
-    // Merge with existing: don't duplicate
-    const existing = this.getSavedServices();
-    const existingIds = new Set(existing.map(s => s.id));
-    const merged = [...existing];
-
-    for (const svc of profile.services) {
-      if (!existingIds.has(svc.id)) {
-        merged.push(svc);
-      }
-    }
-
-    this._state.update(STORAGE_KEY, merged);
-    return merged;
-  }
-
-  // ─── PACKAGE.JSON DETECTION ─────────────────
-
-  async detectFromPackageJson(workspaceRoot: string): Promise<{ script: string; command: string }[]> {
-    try {
-      const uri = vscode.Uri.file(`${workspaceRoot}/package.json`);
-      const content = await vscode.workspace.fs.readFile(uri);
-      const pkg = JSON.parse(Buffer.from(content).toString('utf-8'));
-      const scripts = pkg.scripts ?? {};
-
-      return Object.entries(scripts).map(([key, val]) => ({
-        script: key,
-        command: val as string
-      }));
-    } catch {
-      return [];
-    }
+    this._errorIds.delete(service.id);
   }
 
   // ─── HELPERS ────────────────────────────────
+
+  private _persist(services: Service[]): void {
+    this._state.update(STORAGE_KEY, services);
+  }
 
   private _generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
@@ -268,13 +241,17 @@ export class OrchestrationService {
     }
     this._terminals.delete(id);
     this._startingIds.delete(id);
+    this._errorIds.delete(id);
   }
 
   dispose(): void {
+    for (const d of this._disposables) { d.dispose(); }
+    this._disposables = [];
     for (const [, terminal] of this._terminals) {
       if (terminal.exitStatus === undefined) { terminal.dispose(); }
     }
     this._terminals.clear();
     this._startingIds.clear();
+    this._errorIds.clear();
   }
 }
