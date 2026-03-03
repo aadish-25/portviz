@@ -24,22 +24,6 @@
           "light": "media/refresh.svg",
           "dark": "media/refresh.svg"
         }
-      },
-      {
-        "command": "portviz.kill",
-        "title": "Kill Process",
-        "icon": {
-          "light": "media/kill.svg",
-          "dark": "media/kill.svg"
-        }
-      },
-      {
-        "command": "portviz.openInBrowser",
-        "title": "Open in Browser",
-        "icon": {
-          "light": "media/open.svg",
-          "dark": "media/open.svg"
-        }
       }
     ],
     "viewsContainers": {
@@ -47,7 +31,7 @@
         {
           "id": "portviz",
           "title": "Portviz",
-          "icon": "media/port.svg"
+          "icon": "media/icon.svg"
         }
       ]
     },

@@ -1,8 +1,12 @@
 import * as vscode from 'vscode';
 import { DashboardViewProvider } from './views/dashboardViewProvider';
+import { OrchestrationService } from './services/orchestrationService';
+
+let orchestrationService: OrchestrationService | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  const dashboardProvider = new DashboardViewProvider(context.extensionUri, context.globalState);
+  orchestrationService = new OrchestrationService(context.globalState);
+  const dashboardProvider = new DashboardViewProvider(context.extensionUri, context.globalState, orchestrationService);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
@@ -25,4 +29,9 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
-export function deactivate() { }
+export function deactivate() {
+  if (orchestrationService) {
+    orchestrationService.dispose();
+    orchestrationService = undefined;
+  }
+}
