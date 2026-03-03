@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { CliRunner } from '../services/cliRunner';
 import { SnapshotService } from '../services/snapshotService';
+import { OrchestrationService } from '../services/orchestrationService';
 import { PortEntry } from '../types/report';
 
 // ─── Data Types ───
@@ -25,7 +26,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   public static readonly viewType = 'portviz.dashboard';
 
-  private _view?: vscode.WebviewView;
+  private _view: vscode.WebviewView | undefined;
   private _rawData: PortEntry[] = [];
   private _filters: FilterState = { hideSystem: true, publicOnly: false, showUdp: false };
   private _sortMode: SortMode = 'name';
@@ -33,9 +34,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private _previousPids: Set<number> = new Set();
   private _isRefreshing = false;
   private readonly _snapshotService: SnapshotService;
+  private readonly _orchestrationService: OrchestrationService;
 
-  constructor(private readonly _extensionUri: vscode.Uri, globalState: vscode.Memento) {
+  constructor(private readonly _extensionUri: vscode.Uri, globalState: vscode.Memento, orchestrationService: OrchestrationService) {
     this._snapshotService = new SnapshotService(globalState);
+    this._orchestrationService = orchestrationService;
   }
 
   public resolveWebviewView(
@@ -47,10 +50,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this._extensionUri]
+      localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'media')]
     };
 
-    webviewView.webview.html = this._getHtml();
+    const stylesUri = webviewView.webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'styles.css'));
+    const scriptUri = webviewView.webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.js'));
+
+    webviewView.webview.html = this._getHtml(stylesUri, scriptUri);
 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
@@ -94,13 +100,53 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         case 'snapshotList':
           this._sendSnapshotList();
           break;
+
+        // ── Orchestration messages ──
+        case 'orchLoad':
+          this._sendOrchestrationData();
+          break;
+        case 'orchDetect':
+          await this._handleOrchDetect();
+          break;
+        case 'orchCreateService':
+          await this._handleOrchCreateService(msg.service);
+          break;
+        case 'orchEditService':
+          await this._handleOrchEditService(msg.id, msg.service);
+          break;
+        case 'orchDeleteService':
+          await this._handleOrchDeleteService(msg.id);
+          break;
+        case 'orchStartService':
+          await this._handleOrchStartService(msg.id);
+          break;
+        case 'orchStopService':
+          await this._handleOrchStopService(msg.id);
+          break;
+        case 'orchAcceptDetection':
+          await this._handleOrchAcceptDetection(msg.detected);
+          break;
+        case 'orchDuplicateService':
+          await this._handleOrchDuplicateService(msg.id);
+          break;
+        case 'orchStartGroup':
+          await this._handleOrchStartGroup(msg.group);
+          break;
+        case 'orchUngroupStack':
+          await this._handleOrchUngroupStack(msg.group);
+          break;
+        case 'orchDeleteStack':
+          await this._handleOrchDeleteStack(msg.group);
+          break;
       }
     });
 
     webviewView.onDidDispose(() => {
       this._clearAutoRefresh();
+      this._view = undefined;
     });
 
+    // Fire-and-forget initial refresh
     this.refresh();
   }
 
@@ -123,6 +169,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this._sendFilteredData();
       this._sendOverviewData();
       this._sendSnapshotList();
+      this._sendOrchestrationData();
     } catch (error) {
       vscode.window.showErrorMessage('Refresh failed: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
@@ -490,1088 +537,171 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  // ── ORCHESTRATION DATA ──
+
+  private _sendOrchestrationData(): void {
+    if (!this._view) { return; }
+    const detected = this._orchestrationService.detectServices(this._rawData);
+    const saved = this._orchestrationService.reconcileStatus(this._rawData);
+
+    // Collect unique groups for group-start feature
+    const groups = [...new Set(saved.map(s => s.group).filter(Boolean))] as string[];
+
+    this._view.webview.postMessage({
+      type: 'orchData',
+      detected,
+      saved,
+      groups
+    });
+  }
+
+  private async _handleOrchDetect(): Promise<void> {
+    this._sendOrchestrationData();
+  }
+
+  private async _handleOrchCreateService(service: any): Promise<void> {
+    try {
+      if (!service.id) {
+        service.id = this._orchestrationService.generateId();
+      }
+      this._orchestrationService.saveService(service);
+      this._sendOrchestrationData();
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to create service: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchEditService(id: string, service: any): Promise<void> {
+    try {
+      this._orchestrationService.updateService(id, service);
+      this._sendOrchestrationData();
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to update service: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchDeleteService(id: string): Promise<void> {
+    try {
+      this._orchestrationService.deleteService(id);
+      this._sendOrchestrationData();
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to delete service: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchStartService(id: string): Promise<void> {
+    try {
+      const service = this._orchestrationService.getSavedServices().find(s => s.id === id);
+      if (!service) {
+        vscode.window.showErrorMessage('Service not found');
+        return;
+      }
+      await this._orchestrationService.startService(service);
+      this._sendOrchestrationData(); // immediate – shows "starting"
+
+      // Schedule delayed refreshes to re-scan ports and update status
+      // Services take varying time to start listening on their port
+      const refreshAndUpdate = () => { if (this._view) { this.refresh(); } };
+      setTimeout(refreshAndUpdate, 2000);
+      setTimeout(refreshAndUpdate, 5000);
+      setTimeout(refreshAndUpdate, 10000);
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to start service: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchStopService(id: string): Promise<void> {
+    try {
+      const service = this._orchestrationService.getSavedServices().find(s => s.id === id);
+      if (!service) {
+        vscode.window.showErrorMessage('Service not found');
+        return;
+      }
+      this._orchestrationService.stopService(service);
+      this._sendOrchestrationData(); // immediate – shows "stopped"
+
+      // Delayed refresh to confirm port is freed
+      setTimeout(() => { if (this._view) { this.refresh(); } }, 2000);
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to stop service: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchDuplicateService(id: string): Promise<void> {
+    try {
+      const services = this._orchestrationService.getSavedServices();
+      const source = services.find(s => s.id === id);
+      if (!source) { return; }
+      const clone = { ...source, id: this._orchestrationService.generateId(), name: source.name + ' (copy)', autoDetected: false };
+      this._orchestrationService.saveService(clone);
+      this._sendOrchestrationData();
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to duplicate service: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchStartGroup(group: string): Promise<void> {
+    try {
+      const services = this._orchestrationService.getSavedServices().filter(s => s.group === group);
+      for (const service of services) {
+        if (service.startCommands.length > 0) {
+          await this._orchestrationService.startService(service);
+        }
+      }
+      this._sendOrchestrationData();
+      const refreshAndUpdate = () => this.refresh();
+      setTimeout(refreshAndUpdate, 2000);
+      setTimeout(refreshAndUpdate, 5000);
+      setTimeout(refreshAndUpdate, 10000);
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to start group: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchUngroupStack(group: string): Promise<void> {
+    try {
+      this._orchestrationService.removeGroupFromServices(group);
+      this._sendOrchestrationData();
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to ungroup stack: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchDeleteStack(group: string): Promise<void> {
+    try {
+      const services = this._orchestrationService.getSavedServices().filter(s => s.group === group);
+      for (const svc of services) {
+        this._orchestrationService.deleteService(svc.id);
+      }
+      this._sendOrchestrationData();
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to delete stack: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  private async _handleOrchAcceptDetection(detected: any): Promise<void> {
+    try {
+      this._orchestrationService.saveService({
+        id: this._orchestrationService.generateId(),
+        name: detected.name,
+        port: detected.port,
+        role: detected.role,
+        startCommands: [],
+        workingDirectory: '',
+        autoDetected: true
+      });
+      this._sendOrchestrationData();
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to accept detected service: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
   // ─────────────────────────────────────────────
   // HTML — Single WebviewView with internal tabs
   // ─────────────────────────────────────────────
 
-  private _getHtml(): string {
+  private _getHtmlBody(): string {
     return /* html */ `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Portviz</title>
-  <style>
-    /* ── RESET ── */
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    html, body {
-      height: 100%;
-      overflow: hidden;
-    }
-
-    body {
-      font-family: var(--vscode-font-family, 'Segoe UI', sans-serif);
-      font-size: calc(var(--vscode-font-size, 13px) + 1px);
-      color: var(--vscode-editor-foreground);
-      background: transparent;
-      display: flex;
-      flex-direction: column;
-      line-height: 1.5;
-    }
-
-    /* ── TOP HEADER ── */
-    .header {
-      flex-shrink: 0;
-      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-      z-index: 10;
-    }
-
-    .title-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 14px;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-    }
-
-    .title-bar-name {
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 2px;
-    }
-
-    .title-bar-name .accent { color: #4fc3f7; }
-
-    .title-bar-actions {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    /* ── TAB BAR ── */
-    .tab-bar {
-      display: flex;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-    }
-
-    .tab-btn {
-      flex: 1;
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 7px 0;
-      cursor: pointer;
-      text-align: center;
-      transition: color 0.15s, border-color 0.15s;
-    }
-
-    .tab-btn:hover {
-      color: var(--vscode-editor-foreground);
-    }
-
-    .tab-btn.active {
-      color: #4fc3f7;
-      border-bottom-color: #4fc3f7;
-    }
-
-    /* ── TAB CONTENT ── */
-    .tab-content {
-      flex: 1;
-      overflow-y: scroll;
-      display: none;
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    /* ── FOOTER ── */
-    .footer {
-      flex-shrink: 0;
-      padding: 6px 14px;
-      border-top: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-    }
-
-    /* ── SHARED BUTTON STYLES ── */
-    .btn-icon {
-      background: none;
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-      color: var(--vscode-editor-foreground);
-      cursor: pointer;
-      border-radius: 4px;
-      width: 26px;
-      height: 26px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.15s, opacity 0.15s;
-    }
-
-    .btn-icon:hover {
-      background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
-    }
-
-    .btn-icon:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    .btn-icon.spinning { animation: spin 0.8s linear infinite; }
-
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-
-    .icon-svg {
-      width: 14px;
-      height: 14px;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 2;
-      stroke-linecap: round;
-      pointer-events: none;
-    }
-
-    .icon-svg.icon-fill {
-      fill: currentColor;
-      stroke: none;
-    }
-
-    .btn-icon .icon-svg {
-      width: 15px;
-      height: 15px;
-    }
-
-    /* ════════════════════════════════════
-       OVERVIEW TAB
-       ════════════════════════════════════ */
-
-    .ov-section {
-      margin-bottom: 18px;
-      padding: 0 14px;
-    }
-
-    .ov-section:first-child {
-      padding-top: 12px;
-    }
-
-    .ov-section-title {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      margin-bottom: 10px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-    }
-
-    .ov-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .ov-card {
-      padding: 10px 12px;
-      border-radius: 6px;
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-      background: var(--vscode-input-background, rgba(255,255,255,0.04));
-    }
-
-    .ov-card.full { grid-column: 1 / -1; }
-
-    .ov-val {
-      font-size: 20px;
-      font-weight: 700;
-      line-height: 1.2;
-    }
-
-    .ov-lbl {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      margin-top: 2px;
-    }
-
-    .ov-val.green  { color: #66bb6a; }
-    .ov-val.blue   { color: #42a5f5; }
-    .ov-val.orange { color: #ffa726; }
-    .ov-val.purple { color: #ab47bc; }
-
-    /* Card hierarchy */
-    .ov-card.primary .ov-val { font-size: 24px; }
-    .ov-card.secondary .ov-val { font-size: 22px; font-weight: 700; }
-    .ov-card.tertiary .ov-val { font-size: 18px; opacity: 0.8; }
-    .ov-card.tertiary .ov-lbl { opacity: 0.7; }
-
-    .ov-card.full .ov-val {
-      font-size: 12px;
-      font-weight: 400;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-    }
-
-    .ov-risk-empty {
-      font-size: 12px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      padding: 8px 0;
-    }
-
-    .ov-risk-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 0;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.05));
-    }
-
-    .ov-risk-item:last-child { border-bottom: none; }
-
-    .ov-risk-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .ov-risk-dot.severity-high   { background: #ef5350; }
-    .ov-risk-dot.severity-medium { background: #ffa726; }
-    .ov-risk-dot.severity-low    { background: #66bb6a; }
-
-    .ov-risk-info { flex: 1; min-width: 0; }
-
-    .ov-risk-name {
-      font-size: 12px;
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .ov-risk-detail {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-    }
-
-    .ov-risk-badge {
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      padding: 2px 7px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.1));
-      flex-shrink: 0;
-    }
-
-    /* ════════════════════════════════════
-       LIVE TAB
-       ════════════════════════════════════ */
-
-    .live-controls {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 8px 14px;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-      flex-wrap: wrap;
-      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-      position: sticky;
-      top: 0;
-      z-index: 5;
-    }
-
-    .toggle-group {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      user-select: none;
-      cursor: pointer;
-    }
-
-    .toggle-group label {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.6));
-      cursor: pointer;
-    }
-
-    .toggle-switch {
-      position: relative;
-      display: block;
-      width: 32px;
-      height: 16px;
-      cursor: pointer;
-    }
-
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-      position: absolute;
-    }
-
-    .toggle-slider {
-      position: absolute;
-      inset: 0;
-      background: var(--vscode-input-background, rgba(255,255,255,0.08));
-      border-radius: 8px;
-      transition: background 0.2s;
-      cursor: pointer;
-    }
-
-    .toggle-slider::after {
-      content: '';
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      width: 12px;
-      height: 12px;
-      background: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      border-radius: 50%;
-      transition: transform 0.2s, background 0.2s;
-    }
-
-    .toggle-switch input:checked + .toggle-slider {
-      background: #4fc3f7;
-    }
-
-    .toggle-switch input:checked + .toggle-slider::after {
-      transform: translateX(16px);
-      background: #fff;
-    }
-
-    .controls-sep {
-      width: 1px;
-      height: 16px;
-      background: var(--vscode-panel-border, rgba(255,255,255,0.1));
-      flex-shrink: 0;
-    }
-
-    .sort-select {
-      font-family: inherit;
-      font-size: 11px;
-      color: var(--vscode-editor-foreground);
-      background: var(--vscode-input-background, rgba(255,255,255,0.06));
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-      border-radius: 4px;
-      padding: 2px 6px;
-      cursor: pointer;
-      outline: none;
-    }
-
-    .sort-select:focus { border-color: #4fc3f7; }
-
-    .sort-label {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.6));
-    }
-
-    .sort-group {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-
-    /* Process rows */
-    .process-row {
-      padding: 6px 14px;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .process-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .process-chevron {
-      font-size: 10px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      transition: transform 0.15s;
-      width: 14px;
-      text-align: center;
-      flex-shrink: 0;
-    }
-
-    .process-chevron.open { transform: rotate(90deg); }
-
-    .process-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .process-info {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .process-name {
-      font-weight: 600;
-      font-size: 13px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .process-meta {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      opacity: 0.75;
-    }
-
-    .process-actions {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-    }
-
-    /* Port rows */
-    .port-list {
-      padding-left: 30px;
-      overflow: hidden;
-      max-height: 2000px;
-      transition: max-height 0.15s ease;
-    }
-
-    .port-row {
-      display: flex;
-      align-items: center;
-      padding: 3px 0;
-      border-radius: 4px;
-    }
-
-    .port-row:hover {
-      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
-    }
-
-    .port-left {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .port-icon {
-      font-size: 12px;
-      width: 16px;
-      text-align: center;
-      flex-shrink: 0;
-    }
-
-    .port-number {
-      font-weight: 700;
-      font-size: 13px;
-      min-width: 45px;
-    }
-
-    .port-detail {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      white-space: nowrap;
-    }
-
-    .badge-public {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: rgba(255, 167, 38, 0.12);
-      color: #ffa726;
-      border: 1px solid rgba(255, 167, 38, 0.25);
-      white-space: nowrap;
-    }
-
-    .badge-framework {
-      font-size: 10px;
-      font-weight: 600;
-      padding: 1px 6px;
-      border-radius: 999px;
-      background: rgba(66, 165, 245, 0.12);
-      color: #42a5f5;
-      border: 1px solid rgba(66, 165, 245, 0.2);
-      white-space: nowrap;
-    }
-
-    .port-right {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-    }
-
-    /* Action buttons */
-    .btn-action {
-      background: none;
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.1));
-      color: var(--vscode-editor-foreground);
-      cursor: pointer;
-      border-radius: 4px;
-      width: 26px;
-      height: 26px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
-      flex-shrink: 0;
-    }
-
-    .btn-action:hover {
-      background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
-    }
-
-    .btn-action.open-btn:hover { border-color: #4fc3f7; color: #4fc3f7; }
-    .btn-action.kill-btn:hover { border-color: #ef5350; color: #ef5350; }
-
-    /* Semantic colors */
-    .dot-green  { background: #66bb6a; }
-    .dot-orange { background: #ffa726; }
-    .dot-purple { background: #ab47bc; }
-    .dot-gray   { background: #9e9e9e; }
-
-    .port-local  { color: #66bb6a; }
-    .port-public { color: #ffa726; }
-    .port-udp    { color: #ab47bc; }
-    .port-other  { color: #42a5f5; }
-
-    /* States */
-    .empty-state, .loading-state {
-      text-align: center;
-      padding: 40px 14px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-    }
-
-    .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
-
-    .process-row.highlight {
-      background: rgba(79, 195, 247, 0.08);
-      transition: background 1.5s ease-out;
-    }
-
-    .process-row.highlight-fade { background: transparent; }
-
-    /* ════════════════════════════════════
-       SNAPSHOTS TAB
-       ════════════════════════════════════ */
-
-    .snap-section {
-      padding: 0 14px;
-      margin-bottom: 16px;
-    }
-
-    .snap-section:first-child { padding-top: 10px; }
-
-    .snap-action-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-      position: sticky;
-      top: 0;
-      z-index: 5;
-    }
-
-    .snap-btn {
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 5px 12px;
-      border-radius: 4px;
-      border: 1px solid #4fc3f7;
-      background: rgba(79, 195, 247, 0.1);
-      color: #4fc3f7;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-
-    .snap-btn:hover { background: rgba(79, 195, 247, 0.2); }
-
-    .snap-btn-primary {
-      font-size: 12px;
-      padding: 6px 16px;
-    }
-
-    .snap-cta {
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      padding: 8px 24px;
-      border-radius: 6px;
-      border: 1px solid #4fc3f7;
-      background: rgba(79, 195, 247, 0.15);
-      color: #4fc3f7;
-      cursor: pointer;
-      margin-top: 14px;
-      transition: background 0.15s;
-    }
-
-    .snap-cta:hover { background: rgba(79, 195, 247, 0.25); }
-
-    .snap-compare-selects {
-      position: relative;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding-right: 36px;
-    }
-
-    .snap-swap-btn {
-      font-family: inherit;
-      font-size: 14px;
-      background: var(--vscode-input-background, rgba(255,255,255,0.06));
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      cursor: pointer;
-      border-radius: 4px;
-      width: 28px;
-      height: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: absolute;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 2;
-      transition: background 0.15s, color 0.15s;
-    }
-
-    .snap-swap-btn:hover {
-      background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
-      color: #4fc3f7;
-    }
-
-    .snap-compare-actions {
-      display: flex;
-      gap: 8px;
-    }
-
-    .snap-compare-btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    .snap-compare-current-btn {
-      border-color: #ffa726;
-      color: #ffa726;
-    }
-
-    .snap-compare-current-btn:hover {
-      background: rgba(255, 167, 38, 0.1);
-      border-color: #ffa726;
-    }
-
-    .snap-compare-helper {
-      font-size: 10px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      min-height: 14px;
-    }
-
-    /* Snapshot detail hierarchy */
-    .snap-detail {
-      grid-column: 1 / -1;
-      padding: 8px 0 10px 8px;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.06));
-    }
-
-    .snap-detail-proc {
-      margin-bottom: 6px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.04));
-    }
-
-    .snap-detail-proc:last-child { border-bottom: none; margin-bottom: 0; }
-
-    .snap-detail-proc-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--vscode-editor-foreground);
-      margin-bottom: 2px;
-    }
-
-    .snap-detail-proc-meta {
-      font-size: 10px;
-      font-weight: 400;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-    }
-
-    .snap-detail-port {
-      font-size: 11px;
-      padding: 1px 0 1px 14px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-    }
-
-    .snap-detail-port .port-num { color: #42a5f5; font-weight: 600; }
-    .snap-detail-port .port-pub { color: #ffa726; font-weight: 600; }
-
-    /* Empty state */
-    .snap-empty {
-      text-align: center;
-      padding: 30px 14px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-    }
-
-    .snap-empty-icon { font-size: 28px; margin-bottom: 8px; }
-
-    .snap-empty-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--vscode-editor-foreground);
-      margin-bottom: 4px;
-    }
-
-    .snap-empty-desc {
-      font-size: 11px;
-      max-width: 220px;
-      margin: 0 auto;
-      line-height: 1.6;
-    }
-
-    .snap-section-title {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      margin-bottom: 8px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-    }
-
-    .snap-table {
-      width: 100%;
-    }
-
-    .snap-table-header {
-      display: grid;
-      grid-template-columns: 1fr 55px 80px 24px;
-      gap: 4px;
-      padding: 4px 0;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.06));
-    }
-
-    .snap-row {
-      display: grid;
-      grid-template-columns: 1fr 55px 80px 24px;
-      gap: 4px;
-      align-items: center;
-      padding: 6px 0;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.04));
-      font-size: 12px;
-    }
-
-    .snap-row:hover {
-      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
-      border-radius: 4px;
-    }
-
-    .snap-row { cursor: pointer; position: relative; }
-
-
-    .snap-name-cell {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-width: 0;
-    }
-
-    .snap-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .snap-dot.green  { background: #66bb6a; }
-    .snap-dot.blue   { background: #42a5f5; }
-    .snap-dot.orange { background: #ffa726; }
-    .snap-dot.purple { background: #ab47bc; }
-
-    .snap-name {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-weight: 600;
-    }
-
-    .snap-ports { text-align: center; color: #42a5f5; font-weight: 600; }
-
-    .snap-date {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      text-align: right;
-    }
-
-    .snap-menu-btn {
-      background: none;
-      border: none;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      cursor: pointer;
-      font-size: 14px;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
-      width: 24px;
-      height: 24px;
-      transition: background 0.15s, color 0.15s;
-    }
-
-    .snap-menu-btn:hover {
-      background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
-      color: var(--vscode-editor-foreground);
-    }
-
-    .snap-dropdown {
-      position: absolute;
-      right: 14px;
-      background: var(--vscode-menu-background, #252526);
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-      border-radius: 6px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      z-index: 20;
-      min-width: 120px;
-      overflow: hidden;
-    }
-
-    .snap-dropdown-item {
-      padding: 6px 14px;
-      font-size: 12px;
-      cursor: pointer;
-      color: var(--vscode-editor-foreground);
-      transition: background 0.1s;
-    }
-
-    .snap-dropdown-item:hover {
-      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-    }
-
-    .snap-dropdown-item.danger { color: #ef5350; }
-
-    /* Compare section */
-    .snap-compare {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .snap-compare-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .snap-compare-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      width: 14px;
-      flex-shrink: 0;
-    }
-
-    .snap-compare-select {
-      flex: 1;
-      font-family: inherit;
-      font-size: 11px;
-      color: var(--vscode-editor-foreground);
-      background: var(--vscode-input-background, rgba(255,255,255,0.06));
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-      border-radius: 4px;
-      padding: 4px 6px;
-      outline: none;
-    }
-
-    .snap-compare-select:focus { border-color: #4fc3f7; }
-
-    .snap-compare-btn {
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 5px 14px;
-      border-radius: 4px;
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-      background: var(--vscode-input-background, rgba(255,255,255,0.06));
-      color: var(--vscode-editor-foreground);
-      cursor: pointer;
-      align-self: flex-start;
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    .snap-compare-btn:hover { border-color: #4fc3f7; background: rgba(79, 195, 247, 0.1); }
-
-    /* Diff results */
-    .snap-diff {
-      margin-top: 8px;
-      padding-bottom: 8px;
-    }
-
-    .snap-diff-context {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      margin-bottom: 6px;
-      padding: 4px 0;
-    }
-
-    .snap-diff-context .live-indicator {
-      color: #ffa726;
-      font-weight: 600;
-    }
-
-    .snap-diff-summary {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .snap-diff-summary-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      margin-right: 2px;
-    }
-
-    .snap-diff-badge {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 999px;
-    }
-
-    .snap-diff-badge.added  { background: rgba(102,187,106,0.15); color: #66bb6a; }
-    .snap-diff-badge.removed { background: rgba(239,83,80,0.15); color: #ef5350; }
-    .snap-diff-badge.same   { background: rgba(255,255,255,0.06); color: var(--vscode-descriptionForeground); }
-
-    .snap-diff-group {
-      margin-bottom: 8px;
-    }
-
-    .snap-diff-group-header {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--vscode-editor-foreground);
-      padding: 4px 0 2px;
-      border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.04));
-    }
-
-    .snap-diff-group-meta {
-      font-size: 10px;
-      font-weight: 400;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-      margin-left: 6px;
-    }
-
-    .snap-diff-port {
-      font-size: 11px;
-      padding: 1px 0 1px 14px;
-    }
-
-    .snap-diff-port.added   { color: #66bb6a; }
-    .snap-diff-port.removed { color: #ef5350; }
-    .snap-diff-port.unchanged { color: var(--vscode-descriptionForeground, rgba(255,255,255,0.3)); }
-
-    .snap-diff-port .diff-marker {
-      display: inline-block;
-      width: 14px;
-      font-weight: 700;
-    }
-
-    /* Compare with latest inline */
-    .snap-compare-latest-btn {
-      font-family: inherit;
-      font-size: 10px;
-      background: none;
-      border: none;
-      color: #4fc3f7;
-      cursor: pointer;
-      padding: 0;
-      opacity: 0;
-      transition: opacity 0.15s;
-    }
-
-    .snap-row:hover .snap-compare-latest-btn { opacity: 1; }
-
-    /* Enriched metadata */
-    .snap-meta-sub {
-      font-size: 10px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-    }
-
-    /* ════════════════════════════════════
-       PLACEHOLDER TABS (Orchestration)
-       ════════════════════════════════════ */
-
-    .placeholder-page {
-      text-align: center;
-      padding: 40px 14px;
-    }
-
-    .placeholder-page .ph-icon {
-      font-size: 28px;
-      margin-bottom: 10px;
-    }
-
-    .placeholder-page .ph-title {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-
-    .placeholder-page .ph-desc {
-      font-size: 12px;
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      max-width: 240px;
-      margin: 0 auto 16px;
-    }
-
-    .ph-btn-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .ph-btn {
-      font-family: inherit;
-      font-size: 12px;
-      padding: 6px 16px;
-      border-radius: 4px;
-      border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-      background: var(--vscode-input-background, rgba(255,255,255,0.06));
-      color: var(--vscode-descriptionForeground, rgba(255,255,255,0.5));
-      cursor: not-allowed;
-      width: 180px;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
 
   <!-- HEADER -->
   <div class="header">
@@ -1585,21 +715,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     </div>
 
     <!-- TAB BAR -->
-    <div class="tab-bar">
-      <button class="tab-btn active" data-tab="overview">Overview</button>
-      <button class="tab-btn" data-tab="live">Live</button>
-      <button class="tab-btn" data-tab="snapshots">Snapshots</button>
-      <button class="tab-btn" data-tab="orchestration">Orch</button>
+    <div class="tab-bar" role="tablist" aria-label="Main navigation">
+      <button class="tab-btn active" data-tab="overview" role="tab" aria-selected="true" aria-controls="tab-overview">Overview</button>
+      <button class="tab-btn" data-tab="live" role="tab" aria-selected="false" aria-controls="tab-live">Live</button>
+      <button class="tab-btn" data-tab="snapshots" role="tab" aria-selected="false" aria-controls="tab-snapshots">Snapshots</button>
+      <button class="tab-btn" data-tab="orchestration" role="tab" aria-selected="false" aria-controls="tab-orchestration">Orch</button>
     </div>
   </div>
 
   <!-- TAB: OVERVIEW -->
-  <div class="tab-content active" id="tab-overview">
+  <div class="tab-content active" id="tab-overview" role="tabpanel" aria-labelledby="tab-overview">
     <div class="loading-state">Loading\u2026</div>
   </div>
 
   <!-- TAB: LIVE -->
-  <div class="tab-content" id="tab-live">
+  <div class="tab-content" id="tab-live" role="tabpanel" aria-labelledby="tab-live">
     <div class="live-controls">
       <div class="toggle-group">
         <label class="toggle-switch">
@@ -1646,16 +776,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   </div>
 
   <!-- TAB: SNAPSHOTS -->
-  <div class="tab-content" id="tab-snapshots">
+  <div class="tab-content" id="tab-snapshots" role="tabpanel" aria-labelledby="tab-snapshots">
     <div class="snap-action-bar">
-      <button class="snap-btn" id="btn-save-snapshot">\u{1F4F8} Save Snapshot</button>
+      <button class="snap-btn" id="btn-save-snapshot"><svg class="snap-btn-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Save Snapshot</button>
     </div>
     <div id="snap-list-section">
       <div class="snap-empty">
-        <div class="snap-empty-icon">\u{1F4F8}</div>
+        <div class="snap-empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
         <div class="snap-empty-title">No snapshots saved</div>
         <div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div>
-        <button class="snap-cta" id="btn-save-snapshot-cta">\u{2795} Capture Current State</button>
+        <button class="snap-cta" id="btn-save-snapshot-cta"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Capture Current State</button>
       </div>
     </div>
     <div class="snap-section" id="snap-compare-section" style="display:none;">
@@ -1673,7 +803,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           <button class="snap-swap-btn" id="btn-snap-swap" title="Swap A and B">\u21C5</button>
         </div>
         <div class="snap-compare-actions">
-          <button class="snap-compare-btn" id="btn-snap-compare">\u{1F50D} Compare</button>
+          <button class="snap-compare-btn" id="btn-snap-compare"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg> Compare</button>
           <button class="snap-compare-btn snap-compare-current-btn" id="btn-snap-compare-current">\u26A1 vs Current</button>
         </div>
         <div class="snap-compare-helper" id="snap-compare-helper"></div>
@@ -1683,578 +813,149 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   </div>
 
   <!-- TAB: ORCHESTRATION -->
-  <div class="tab-content" id="tab-orchestration">
-    <div class="placeholder-page">
-      <div class="ph-icon">\u{2699}\u{FE0F}</div>
-      <div class="ph-title">Orchestration</div>
-      <div class="ph-desc">Manage multiple processes at once. Multi-select, batch kill, and process grouping coming soon.</div>
+  <div class="tab-content" id="tab-orchestration" role="tabpanel" aria-labelledby="tab-orchestration">
+    <div class="orch-controls">
+      <button class="orch-btn orch-btn-create" id="btn-orch-create">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Create
+      </button>
+      <button class="orch-btn orch-btn-detect" id="btn-orch-detect">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Detect
+      </button>
+    </div>
+    <div class="orch-filter-bar">
+      <input type="text" class="orch-filter-input" id="orch-filter" placeholder="Filter services by name, role, port…">
+    </div>
+
+    <div class="orch-section orch-section-detected" id="orch-detected-section">
+      <div class="orch-section-title orch-section-toggle" id="orch-detected-toggle">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Detected Services
+        <span class="orch-toggle-count" id="orch-detected-count"></span>
+      </div>
+      <div class="orch-collapsible-wrap">
+        <div class="orch-list" id="orch-detected-list">
+        <div class="orch-empty">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <div>No services detected</div>
+          <div class="orch-empty-hint">Click "Detect" to scan running processes</div>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div class="orch-section orch-section-saved" id="orch-saved-section">
+      <div class="orch-section-title orch-section-toggle" id="orch-saved-toggle">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        Saved Services
+        <span class="orch-toggle-count" id="orch-saved-count"></span>
+      </div>
+      <div class="orch-collapsible-wrap">
+      <div class="orch-list" id="orch-saved-list">
+        <div class="orch-empty">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <div>No services saved</div>
+          <div class="orch-empty-hint">Create or accept detected services to manage them</div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Orchestration Modal -->
+  <div class="orch-modal-overlay" id="orch-modal" role="dialog" aria-modal="true" aria-labelledby="orch-modal-title">
+    <div class="orch-modal">
+      <div class="orch-modal-header">
+        <div class="orch-modal-title" id="orch-modal-title">Create Service</div>
+        <button class="orch-modal-close" id="btn-orch-modal-close">&times;</button>
+      </div>
+
+      <div class="orch-modal-field">
+        <label class="orch-modal-label">Name</label>
+        <input type="text" class="orch-modal-input" id="orch-input-name" placeholder="e.g., My API Server">
+      </div>
+
+      <div class="orch-modal-field">
+        <label class="orch-modal-label">Role</label>
+        <input type="hidden" id="orch-input-role" value="">
+        <div class="orch-dropdown" id="orch-role-dropdown" role="listbox" aria-label="Select role">
+          <div class="orch-dropdown-selected" id="orch-role-selected" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false">Select Role</div>
+          <div class="orch-dropdown-list" id="orch-role-list" role="presentation">
+            <div class="orch-dropdown-option" data-value="frontend" role="option">Frontend</div>
+            <div class="orch-dropdown-option" data-value="backend" role="option">Backend</div>
+            <div class="orch-dropdown-option" data-value="database" role="option">Database</div>
+            <div class="orch-dropdown-option" data-value="cache" role="option">Cache</div>
+            <div class="orch-dropdown-option" data-value="custom" role="option">Custom</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="orch-modal-field">
+        <label class="orch-modal-label">Port</label>
+        <input type="number" class="orch-modal-input" id="orch-input-port" placeholder="e.g., 3000">
+      </div>
+
+      <div class="orch-modal-field">
+        <label class="orch-modal-label">Working Directory</label>
+        <input type="text" class="orch-modal-input" id="orch-input-cwd" placeholder="e.g., /path/to/project">
+      </div>
+
+      <div class="orch-modal-field">
+        <label class="orch-modal-label">Start Commands (one per line)</label>
+        <textarea class="orch-modal-textarea" id="orch-input-cmds" placeholder="npm install, npm start, etc."></textarea>
+      </div>
+
+      <div class="orch-modal-field">
+        <label class="orch-modal-label">Environment Variables <span class="orch-modal-optional">(optional, KEY=VALUE per line)</span></label>
+        <textarea class="orch-modal-textarea orch-modal-textarea-sm" id="orch-input-env" placeholder="NODE_ENV=development&#10;PORT=3000"></textarea>
+      </div>
+
+      <div class="orch-modal-field">
+        <label class="orch-modal-label">Group / Stack <span class="orch-modal-optional">(optional, for bulk start)</span></label>
+        <input type="text" class="orch-modal-input" id="orch-input-group" placeholder="e.g., my-fullstack">
+      </div>
+
+      <input type="hidden" id="orch-edit-id">
+
+      <div class="orch-modal-actions">
+        <button class="orch-modal-btn" id="btn-orch-modal-cancel">Cancel</button>
+        <button class="orch-modal-btn primary" id="btn-orch-modal-save">Save</button>
+      </div>
     </div>
   </div>
 
   <!-- FOOTER -->
   <div class="footer" id="footer"></div>
-
-  <script>
-    const vscode = acquireVsCodeApi();
-
-    // ── Tab switching ──
-    let activeTab = 'overview';
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        activeTab = btn.dataset.tab;
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('tab-' + activeTab).classList.add('active');
-      });
-    });
-
-    // ── Refresh button ──
-    document.getElementById('btn-refresh').addEventListener('click', () => {
-      vscode.postMessage({ type: 'refresh' });
-    });
-
-    // ── Filter toggles ──
-    document.getElementById('filter-hide-system').addEventListener('change', sendFilters);
-    document.getElementById('filter-public-only').addEventListener('change', sendFilters);
-    document.getElementById('filter-show-udp').addEventListener('change', sendFilters);
-
-    function sendFilters() {
-      vscode.postMessage({
-        type: 'filterChange',
-        filters: {
-          hideSystem: document.getElementById('filter-hide-system').checked,
-          publicOnly: document.getElementById('filter-public-only').checked,
-          showUdp: document.getElementById('filter-show-udp').checked
-        }
-      });
-    }
-
-    document.getElementById('sort-mode').addEventListener('change', (e) => {
-      vscode.postMessage({ type: 'sortChange', sort: e.target.value });
-    });
-
-    document.getElementById('toggle-auto-refresh').addEventListener('change', (e) => {
-      vscode.postMessage({ type: 'autoRefreshChange', enabled: e.target.checked });
-    });
-
-    // ── Semantic colors ──
-    function getProcessDotClass(proc) {
-      const name = proc.name.toLowerCase();
-      if (name.includes('system') || proc.pid === 0 || proc.pid === 4) return 'dot-gray';
-      if (proc.ports.some(p => p.local_ip === '0.0.0.0')) return 'dot-orange';
-      if (proc.ports.every(p => p.protocol === 'UDP')) return 'dot-purple';
-      return 'dot-green';
-    }
-
-    function getPortColorClass(port) {
-      if (port.protocol === 'UDP') return 'port-udp';
-      if (port.local_ip === '0.0.0.0') return 'port-public';
-      if (port.local_ip === '127.0.0.1' || port.local_ip === '::1') return 'port-local';
-      return 'port-other';
-    }
-
-    function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
-    }
-
-    // ── LIVE state ──
-    let expandedPids = new Set();
-    let currentLiveData = [];
-    let newPidSet = new Set();
-
-    function renderLive(data) {
-      currentLiveData = data;
-      const el = document.getElementById('live-content');
-
-      if (!data || data.length === 0) {
-        el.innerHTML = '<div class="empty-state"><div class="icon">\u{1F4E1}</div><div>No listening ports found</div></div>';
-        return;
-      }
-
-      let html = '';
-      data.forEach((proc) => {
-        const dotClass = getProcessDotClass(proc);
-        const isOpen = expandedPids.has(proc.pid);
-        const portCount = proc.ports.length;
-        const isNew = newPidSet.has(proc.pid);
-
-        html += '<div class="process-row' + (isNew ? ' highlight' : '') + '" data-row-pid="' + proc.pid + '">';
-        html += '<div class="process-header" data-pid="' + proc.pid + '">';
-        html += '<span class="process-chevron ' + (isOpen ? 'open' : '') + '">\u25B6</span>';
-        html += '<span class="process-dot ' + dotClass + '"></span>';
-        html += '<div class="process-info">';
-        html += '<span class="process-name">' + escapeHtml(proc.name) + '</span>';
-        html += '<span class="process-meta">' + portCount + ' port' + (portCount !== 1 ? 's' : '') + ' \u00B7 PID ' + proc.pid + '</span>';
-        html += '</div>';
-        html += '<div class="process-actions">';
-        html += '<button class="btn-action kill-btn" data-kill-pid="' + proc.pid + '" data-kill-name="' + escapeHtml(proc.name) + '" data-kill-ports="' + portCount + '" title="Kill Process"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 6H21"/><path d="M8 6V4C8 3.448 8.448 3 9 3H15C15.552 3 16 3.448 16 4V6"/><path d="M19 6L18.2 19C18.138 19.877 17.406 20.5 16.526 20.5H7.474C6.594 20.5 5.862 19.877 5.8 19L5 6"/><path d="M10 11V17"/><path d="M14 11V17"/></svg></button>';
-        html += '</div>';
-        html += '</div>';
-
-        if (isOpen) {
-          html += '<div class="port-list">';
-          proc.ports.forEach(port => {
-            const isPublic = port.local_ip === '0.0.0.0';
-            const address = isPublic ? '0.0.0.0' : 'Localhost';
-            const pColor = getPortColorClass(port);
-            html += '<div class="port-row">';
-            html += '<div class="port-left">';
-            html += '<span class="port-icon">\u{1F4E6}</span>';
-            html += '<span class="port-number ' + pColor + '">' + port.local_port + '</span>';
-            html += '<span class="port-detail">\u00B7 ' + address + ' \u00B7 ' + port.protocol + '</span>';
-            if (isPublic) { html += '<span class="badge-public">\u{1F310} Public</span>'; }
-            if (port.frameworkHint) { html += '<span class="badge-framework">' + escapeHtml(port.frameworkHint) + '</span>'; }
-            html += '</div>';
-            html += '<div class="port-right">';
-            if (port.protocol === 'TCP') {
-              html += '<button class="btn-action open-btn" data-open-port="' + port.local_port + '" data-open-ip="' + port.local_ip + '" title="Open in Browser"><svg class="icon-svg icon-fill" viewBox="0 0 24 24"><path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h5V3H3v7h2V5zm0 14h14V9h2v12H3V9h2v10z"/></svg></button>';
-            }
-            html += '</div>';
-            html += '</div>';
-          });
-          html += '</div>';
-        }
-
-        html += '</div>';
-      });
-
-      el.innerHTML = html;
-      bindLiveEvents();
-
-      if (newPidSet.size > 0) {
-        setTimeout(() => {
-          document.querySelectorAll('.process-row.highlight').forEach(el => {
-            el.classList.add('highlight-fade');
-            el.classList.remove('highlight');
-          });
-          newPidSet.clear();
-        }, 1500);
-      }
-    }
-
-    function bindLiveEvents() {
-      document.querySelectorAll('.process-header').forEach(el => {
-        el.addEventListener('click', () => {
-          const pid = Number(el.dataset.pid);
-          if (expandedPids.has(pid)) { expandedPids.delete(pid); }
-          else { expandedPids.add(pid); }
-          renderLive(currentLiveData);
-        });
-      });
-
-      document.querySelectorAll('[data-kill-pid]').forEach(el => {
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          vscode.postMessage({
-            type: 'kill',
-            pid: Number(el.dataset.killPid),
-            processName: el.dataset.killName,
-            portCount: Number(el.dataset.killPorts)
-          });
-        });
-      });
-
-      document.querySelectorAll('[data-open-port]').forEach(el => {
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          vscode.postMessage({
-            type: 'open',
-            port: Number(el.dataset.openPort),
-            ip: el.dataset.openIp
-          });
-        });
-      });
-    }
-
-    // ── OVERVIEW render ──
-    function renderOverview(data) {
-      const el = document.getElementById('tab-overview');
-      if (!data) {
-        el.innerHTML = '<div class="loading-state">No data available</div>';
-        return;
-      }
-
-      let html = '';
-
-      html += '<div class="ov-section">';
-      html += '<div class="ov-section-title">Summary</div>';
-      html += '<div class="ov-grid">';
-      html += ovCard(data.listeningPorts, 'Listening Ports', 'blue', 'primary');
-      html += ovCard(data.publicPorts, 'Public Ports', 'orange', 'secondary');
-      html += ovCard(data.totalProcesses, 'Processes', 'green', 'tertiary');
-      html += ovCard(data.udpPorts, 'UDP Ports', 'purple', 'tertiary');
-      html += '<div class="ov-card full"><div class="ov-val">Last updated: ' + data.lastUpdated + '</div></div>';
-      html += '</div></div>';
-
-      html += '<div class="ov-section">';
-      html += '<div class="ov-section-title">Risk Insight \u2014 Public Services</div>';
-      if (data.riskServices.length === 0) {
-        html += '<div class="ov-risk-empty">\u2705 No publicly exposed services</div>';
-      } else {
-        data.riskServices.forEach(svc => {
-          const ports = svc.ports.join(', ');
-          const sevClass = 'severity-' + svc.severity;
-          const sevLabel = svc.severity === 'high' ? 'HIGH' : svc.severity === 'medium' ? 'MED' : 'LOW';
-          html += '<div class="ov-risk-item">';
-          html += '<span class="ov-risk-dot ' + sevClass + '"></span>';
-          html += '<div class="ov-risk-info">';
-          html += '<div class="ov-risk-name">' + escapeHtml(svc.name) + '</div>';
-          html += '<div class="ov-risk-detail">PID ' + svc.pid + ' \u00B7 Ports: ' + ports + '</div>';
-          html += '</div>';
-          html += '<span class="ov-risk-badge">' + sevLabel + '</span>';
-          html += '</div>';
-        });
-      }
-      html += '</div>';
-
-      el.innerHTML = html;
-    }
-
-    function ovCard(value, label, cls, tier) {
-      return '<div class="ov-card ' + (tier || '') + '"><div class="ov-val ' + cls + '">' + value + '</div><div class="ov-lbl">' + label + '</div></div>';
-    }
-
-    // ── Footer ──
-    function updateFooter(summary) {
-      const footer = document.getElementById('footer');
-      if (!summary) { footer.textContent = ''; return; }
-      const parts = [];
-      parts.push(summary.processes + ' process' + (summary.processes !== 1 ? 'es' : ''));
-      parts.push(summary.ports + ' listening port' + (summary.ports !== 1 ? 's' : ''));
-      if (summary.publicPorts > 0) { parts.push(summary.publicPorts + ' public'); }
-      footer.textContent = parts.join(' \u2022 ');
-    }
-
-    // ════════════════════════════════
-    // SNAPSHOT TAB LOGIC
-    // ════════════════════════════════
-
-    let snapshotData = [];
-    let activeDropdownId = null;
-
-    // Save buttons (top bar + CTA)
-    document.getElementById('btn-save-snapshot').addEventListener('click', () => {
-      vscode.postMessage({ type: 'snapshotSave' });
-    });
-    document.getElementById('btn-save-snapshot-cta').addEventListener('click', () => {
-      vscode.postMessage({ type: 'snapshotSave' });
-    });
-
-    // Compare button
-    document.getElementById('btn-snap-compare').addEventListener('click', () => {
-      const idA = document.getElementById('snap-compare-a').value;
-      const idB = document.getElementById('snap-compare-b').value;
-      if (!idA || !idB || idA === idB) { return; }
-      vscode.postMessage({ type: 'snapshotCompare', idA, idB });
-    });
-
-    // Compare with current button
-    document.getElementById('btn-snap-compare-current').addEventListener('click', () => {
-      const idA = document.getElementById('snap-compare-a').value;
-      if (!idA) { return; }
-      vscode.postMessage({ type: 'snapshotCompareWithCurrent', id: idA });
-    });
-
-    // Swap button
-    document.getElementById('btn-snap-swap').addEventListener('click', () => {
-      const selA = document.getElementById('snap-compare-a');
-      const selB = document.getElementById('snap-compare-b');
-      const tmp = selA.value;
-      selA.value = selB.value;
-      selB.value = tmp;
-      updateCompareState();
-    });
-
-    // Validate compare state on select change
-    document.getElementById('snap-compare-a').addEventListener('change', updateCompareState);
-    document.getElementById('snap-compare-b').addEventListener('change', updateCompareState);
-
-    function updateCompareState() {
-      const idA = document.getElementById('snap-compare-a').value;
-      const idB = document.getElementById('snap-compare-b').value;
-      const btn = document.getElementById('btn-snap-compare');
-      const helper = document.getElementById('snap-compare-helper');
-
-      if (idA === idB && idA) {
-        btn.disabled = true;
-        helper.textContent = 'Select two different snapshots';
-      } else if (!idA || !idB) {
-        btn.disabled = true;
-        helper.textContent = '';
-      } else {
-        btn.disabled = false;
-        helper.textContent = '';
-      }
-    }
-
-    // Close dropdowns on outside click
-    document.addEventListener('click', () => {
-      closeDropdowns();
-    });
-
-    function closeDropdowns() {
-      document.querySelectorAll('.snap-dropdown').forEach(d => d.remove());
-      activeDropdownId = null;
-    }
-
-    function timeAgo(isoStr) {
-      const diff = Date.now() - new Date(isoStr).getTime();
-      const mins = Math.floor(diff / 60000);
-      if (mins < 1) return 'just now';
-      if (mins < 60) return mins + ' min ago';
-      const hrs = Math.floor(mins / 60);
-      if (hrs < 24) return hrs + 'h ago';
-      const days = Math.floor(hrs / 24);
-      if (days < 30) return days + 'd ago';
-      return new Date(isoStr).toLocaleDateString();
-    }
-
-    function getSnapDotColor(index) {
-      const colors = ['green', 'blue', 'orange', 'purple'];
-      return colors[index % colors.length];
-    }
-
-    let expandedSnapId = null;
-
-    function renderSnapshots(data) {
-      snapshotData = data;
-      const el = document.getElementById('snap-list-section');
-      const compareSection = document.getElementById('snap-compare-section');
-
-      if (!data || data.length === 0) {
-        el.innerHTML = '<div class="snap-empty"><div class="snap-empty-icon">\u{1F4F8}</div><div class="snap-empty-title">No snapshots saved</div><div class="snap-empty-desc">Capture your current port state and compare it later to detect changes. Click "Save snapshot" to start.</div><button class="snap-cta" id="snap-cta-dynamic">\u{2795} Capture Current State</button></div>';
-        const ctaBtn = document.getElementById('snap-cta-dynamic');
-        if (ctaBtn) { ctaBtn.addEventListener('click', () => vscode.postMessage({ type: 'snapshotSave' })); }
-        compareSection.style.display = 'none';
-        return;
-      }
-
-      let html = '<div class="snap-section">';
-      html += '<div class="snap-section-title">Saved Snapshots (' + data.length + ')</div>';
-      html += '<div class="snap-table">';
-      html += '<div class="snap-table-header"><span>Name</span><span style="text-align:center">Procs</span><span style="text-align:right">Date</span><span></span></div>';
-
-      data.forEach((snap, i) => {
-        const isExpanded = expandedSnapId === snap.id;
-        html += '<div class="snap-row" data-snap-id="' + snap.id + '">';
-        html += '<div class="snap-name-cell"><span class="snap-dot ' + getSnapDotColor(i) + '"></span><div><span class="snap-name">' + escapeHtml(snap.name) + '</span>';
-        html += '<div class="snap-meta-sub">' + snap.processCount + ' procs \u00B7 ' + snap.portCount + ' ports' + (snap.publicCount > 0 ? ' \u00B7 ' + snap.publicCount + ' public' : '') + '</div></div></div>';
-        html += '<span class="snap-ports">' + snap.processCount + '</span>';
-        html += '<span class="snap-date">' + timeAgo(snap.createdAt) + '</span>';
-        html += '<button class="snap-menu-btn" data-snap-menu="' + snap.id + '" title="More actions">\u22EE</button>';
-        html += '</div>';
-
-        if (isExpanded && snap.processes) {
-          html += '<div class="snap-detail">';
-          snap.processes.forEach(proc => {
-            html += '<div class="snap-detail-proc">';
-            html += '<div class="snap-detail-proc-name">' + escapeHtml(proc.name) + ' <span class="snap-detail-proc-meta">PID ' + proc.pid + ' \u00B7 ' + proc.ports.length + ' port' + (proc.ports.length !== 1 ? 's' : '') + '</span></div>';
-            proc.ports.forEach(p => {
-              const cls = p.ip === '0.0.0.0' ? 'port-pub' : 'port-num';
-              html += '<div class="snap-detail-port"><span class="' + cls + '">:' + p.port + '</span> ' + p.ip + '</div>';
-            });
-            html += '</div>';
-          });
-          html += '</div>';
-        }
-      });
-
-      html += '</div></div>';
-      el.innerHTML = html;
-
-      // Show compare section if 2+ snapshots
-      if (data.length >= 2) {
-        compareSection.style.display = '';
-        populateCompareSelects(data);
-        updateCompareState();
-      } else {
-        compareSection.style.display = 'none';
-      }
-
-      // Bind row click to expand/collapse
-      document.querySelectorAll('.snap-row').forEach(row => {
-        row.addEventListener('click', (e) => {
-          if (e.target.closest('.snap-menu-btn') || e.target.closest('.snap-compare-latest-btn')) return;
-          const id = row.dataset.snapId;
-          expandedSnapId = expandedSnapId === id ? null : id;
-          renderSnapshots(snapshotData);
-        });
-      });
-
-      // Bind menu buttons
-      document.querySelectorAll('[data-snap-menu]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const id = btn.dataset.snapMenu;
-          if (activeDropdownId === id) { closeDropdowns(); return; }
-          closeDropdowns();
-          showSnapDropdown(btn, id);
-        });
-      });
-    }
-
-    function showSnapDropdown(anchor, id) {
-      activeDropdownId = id;
-      const dd = document.createElement('div');
-      dd.className = 'snap-dropdown';
-
-      const rect = anchor.getBoundingClientRect();
-      dd.style.top = (rect.bottom + 2) + 'px';
-
-      let items = '<div class="snap-dropdown-item" data-action="rename">Rename</div>';
-      // Add compare-with-latest if there are 2+ snapshots and this isn't the latest
-      if (snapshotData.length >= 2 && snapshotData[0].id !== id) {
-        items += '<div class="snap-dropdown-item" data-action="compare-latest">\u{1F50D} Compare with latest</div>';
-      }
-      items += '<div class="snap-dropdown-item danger" data-action="delete">Delete</div>';
-      dd.innerHTML = items;
-
-      dd.querySelector('[data-action="rename"]').addEventListener('click', (e) => {
-        e.stopPropagation();
-        closeDropdowns();
-        vscode.postMessage({ type: 'snapshotRename', id });
-      });
-
-      const compareLBtn = dd.querySelector('[data-action="compare-latest"]');
-      if (compareLBtn) {
-        compareLBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          closeDropdowns();
-          vscode.postMessage({ type: 'snapshotCompare', idA: id, idB: snapshotData[0].id });
-        });
-      }
-
-      dd.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
-        e.stopPropagation();
-        closeDropdowns();
-        vscode.postMessage({ type: 'snapshotDelete', id });
-      });
-
-      document.body.appendChild(dd);
-    }
-
-    function populateCompareSelects(data) {
-      const selA = document.getElementById('snap-compare-a');
-      const selB = document.getElementById('snap-compare-b');
-      const prevA = selA.value;
-      const prevB = selB.value;
-
-      selA.innerHTML = '';
-      selB.innerHTML = '';
-
-      data.forEach(snap => {
-        const optA = document.createElement('option');
-        optA.value = snap.id;
-        optA.textContent = snap.name;
-        selA.appendChild(optA);
-
-        const optB = document.createElement('option');
-        optB.value = snap.id;
-        optB.textContent = snap.name;
-        selB.appendChild(optB);
-      });
-
-      // Restore previous selection or default to first two
-      if (prevA && data.some(s => s.id === prevA)) { selA.value = prevA; }
-      if (prevB && data.some(s => s.id === prevB)) { selB.value = prevB; }
-      else if (data.length >= 2) { selB.value = data[1].id; }
-    }
-
-    function renderDiff(diff) {
-      const el = document.getElementById('snap-diff-results');
-      if (!diff) { el.innerHTML = ''; return; }
-
-      let html = '<div class="snap-diff">';
-
-      // Context header
-      html += '<div class="snap-diff-context">';
-      html += 'Comparing: <strong>' + escapeHtml(diff.context.nameA) + '</strong> (' + diff.context.ageA + ') \u2192 <strong>' + escapeHtml(diff.context.nameB) + '</strong> (' + diff.context.ageB + ')';
-      if (diff.context.isLiveCompare) {
-        html += ' <span class="live-indicator">\u26A1 Live</span>';
-      }
-      html += '</div>';
-
-      // Summary
-      html += '<div class="snap-diff-summary">';
-      html += '<span class="snap-diff-summary-label">Changes:</span>';
-      html += '<span class="snap-diff-badge added">+' + diff.summary.addedPorts + ' new</span>';
-      html += '<span class="snap-diff-badge removed">-' + diff.summary.removedPorts + ' removed</span>';
-      html += '<span class="snap-diff-badge same">' + diff.summary.unchangedPorts + ' unchanged</span>';
-      html += '</div>';
-
-      if (diff.summary.addedPorts === 0 && diff.summary.removedPorts === 0) {
-        html += '<div style="font-size:12px;color:var(--vscode-descriptionForeground);padding:4px 0;">\u2705 Snapshots are identical</div>';
-      } else {
-        // Grouped process diff
-        diff.processGroups.forEach(group => {
-          if (group.added === 0 && group.removed === 0) { return; } // skip unchanged-only groups
-          html += '<div class="snap-diff-group">';
-          html += '<div class="snap-diff-group-header" style="padding-left:12px;">' + escapeHtml(group.name) + ' <span class="snap-diff-group-meta">PID ' + group.pid + ' \u00B7 +' + group.added + ' -' + group.removed + '</span></div>';
-          group.ports.forEach(p => {
-            if (p.status === 'unchanged') { return; }
-            const marker = p.status === 'added' ? '+' : '\u2212';
-            html += '<div class="snap-diff-port ' + p.status + '"><span class="diff-marker">' + marker + '</span>:' + p.port + ' \u00B7 ' + p.ip + ' \u00B7 ' + p.protocol + '</div>';
-          });
-          html += '</div>';
-        });
-      }
-
-      html += '</div>';
-      el.innerHTML = html;
-    }
-
-    // Request snapshot list on tab switch to snapshots
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (btn.dataset.tab === 'snapshots') {
-          vscode.postMessage({ type: 'snapshotList' });
-        }
-      });
-    });
-
-    // ── Message handler ──
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      switch (msg.type) {
-        case 'liveUpdate':
-          newPidSet = new Set(msg.newPids || []);
-          renderLive(msg.data);
-          updateFooter(msg.summary);
-          break;
-
-        case 'overviewUpdate':
-          renderOverview(msg.data);
-          break;
-
-        case 'snapshotListUpdate':
-          renderSnapshots(msg.data);
-          break;
-
-        case 'snapshotDiff':
-          renderDiff(msg.data);
-          break;
-
-        case 'loadingStart': {
-          const btn = document.getElementById('btn-refresh');
-          btn.disabled = true;
-          btn.classList.add('spinning');
-          break;
-        }
-
-        case 'loadingEnd': {
-          const btn = document.getElementById('btn-refresh');
-          btn.disabled = false;
-          btn.classList.remove('spinning');
-          break;
-        }
-      }
-    });
-  </script>
+    `;
+  }
+
+  private _getHtml(stylesUri: vscode.Uri, scriptUri: vscode.Uri): string {
+    const nonce = this._getNonce();
+    return /* html */ `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this._view!.webview.cspSource}; script-src 'nonce-${nonce}'; font-src ${this._view!.webview.cspSource};" />
+  <title>Portviz</title>
+  <link rel="stylesheet" href="${stylesUri}">
+</head>
+<body>
+${this._getHtmlBody()}
+  <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>
     `;
+  }
+
+  private _getNonce(): string {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
   }
 }
