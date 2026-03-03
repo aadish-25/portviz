@@ -3,23 +3,31 @@
   "displayName": "Portviz",
   "description": "Port & Process Inspector for Developers",
   "version": "0.0.1",
+  "publisher": "portviz",
   "engines": {
     "vscode": "^1.80.0"
   },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "port",
+    "process",
+    "network",
+    "monitor",
+    "inspector"
+  ],
   "icon": "media/port.svg",
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "activationEvents": [
     "onView:portviz.dashboard"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "portviz.showReport",
-        "title": "Portviz: Show Report"
-      },
-      {
         "command": "portviz.refresh",
-        "title": "Refresh",
+        "title": "Portviz: Refresh",
         "icon": {
           "light": "media/refresh.svg",
           "dark": "media/refresh.svg"
@@ -43,15 +51,80 @@
           "name": "Portviz"
         }
       ]
+    },
+    "configuration": {
+      "title": "Portviz",
+      "properties": {
+        "portviz.autoRefreshInterval": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 60,
+          "description": "Auto-refresh interval in seconds"
+        },
+        "portviz.cliTimeout": {
+          "type": "number",
+          "default": 15,
+          "minimum": 5,
+          "maximum": 120,
+          "description": "CLI command timeout in seconds"
+        },
+        "portviz.serviceStartTimeout": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 300,
+          "description": "Timeout for service start detection in seconds"
+        },
+        "portviz.maxSnapshots": {
+          "type": "number",
+          "default": 15,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of saved snapshots"
+        },
+        "portviz.notifications.portOpened": {
+          "type": "boolean",
+          "default": false,
+          "description": "Notify when a new port starts listening"
+        },
+        "portviz.notifications.portClosed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Notify when a port stops listening"
+        },
+        "portviz.notifications.publicPort": {
+          "type": "boolean",
+          "default": true,
+          "description": "Warn when a new public-facing port (0.0.0.0) is detected"
+        },
+        "portviz.resourceMonitor.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show CPU and memory usage per process"
+        },
+        "portviz.resourceMonitor.refreshInterval": {
+          "type": "number",
+          "default": 10,
+          "minimum": 3,
+          "maximum": 60,
+          "description": "Resource monitoring refresh interval in seconds"
+        }
+      }
     }
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "build": "node esbuild.js",
+    "build:watch": "node esbuild.js --watch",
+    "vscode:prepublish": "npm run build",
+    "package": "npx @vscode/vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.80.0",
+    "esbuild": "^0.20.0",
     "typescript": "^5.0.0"
   }
 }
