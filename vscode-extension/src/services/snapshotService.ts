@@ -2,12 +2,18 @@ import * as vscode from 'vscode';
 import { PortEntry } from '../types/report';
 import { Snapshot, SnapshotDiff, DiffProcessGroup } from '../types/snapshot';
 
+import { workspace } from 'vscode';
+
 const STORAGE_KEY = 'portviz.snapshots';
-const MAX_SNAPSHOTS = 15;
+const DEFAULT_MAX_SNAPSHOTS = 15;
+
+function getMaxSnapshots(): number {
+  return workspace.getConfiguration('portviz').get<number>('maxSnapshots', DEFAULT_MAX_SNAPSHOTS);
+}
 
 export class SnapshotService {
 
-  constructor(private readonly _state: vscode.Memento) {}
+  constructor(private readonly _state: vscode.Memento) { }
 
   /** Get all snapshots, newest first */
   getAll(): Snapshot[] {
@@ -36,8 +42,9 @@ export class SnapshotService {
 
     const all = this.getAll();
 
-    // Cap at MAX_SNAPSHOTS: remove oldest if over limit
-    while (all.length >= MAX_SNAPSHOTS) {
+    // Cap at configured max snapshots: remove oldest if over limit
+    const maxSnaps = getMaxSnapshots();
+    while (all.length >= maxSnaps) {
       all.pop();
     }
 

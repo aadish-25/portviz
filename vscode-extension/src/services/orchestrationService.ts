@@ -22,8 +22,10 @@ export class OrchestrationService {
   /** Services that failed to start (timed out) */
   private _errorIds = new Set<string>();
 
-  /** Service start timeout in milliseconds (30 seconds) */
-  private readonly START_TIMEOUT = 30000;
+  /** Get the configured service start timeout in milliseconds */
+  private get START_TIMEOUT(): number {
+    return vscode.workspace.getConfiguration('portviz').get<number>('serviceStartTimeout', 30) * 1000;
+  }
 
   /** Disposables for cleanup */
   private _disposables: vscode.Disposable[] = [];

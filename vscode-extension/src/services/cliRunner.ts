@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
+import * as vscode from 'vscode';
 import { PortvizReport } from '../types/report';
 
 export interface CliResult<T> {
@@ -9,7 +10,11 @@ export interface CliResult<T> {
 }
 
 /** Default CLI timeout in milliseconds */
-const CLI_TIMEOUT = 15000;
+const DEFAULT_CLI_TIMEOUT = 15000;
+
+function getCliTimeout(): number {
+  return vscode.workspace.getConfiguration('portviz').get<number>('cliTimeout', 15) * 1000;
+}
 
 export class CliRunner {
   runReport(): Promise<CliResult<PortvizReport>> {
@@ -33,14 +38,15 @@ export class CliRunner {
       let stdoutData = '';
       let stderrData = '';
       let settled = false;
+      const timeout = getCliTimeout();
 
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
           child.kill();
-          resolve({ success: false, error: `Portviz CLI timed out after ${CLI_TIMEOUT / 1000}s`, exitCode: -1 });
+          resolve({ success: false, error: `Portviz CLI timed out after ${timeout / 1000}s`, exitCode: -1 });
         }
-      }, CLI_TIMEOUT);
+      }, timeout);
 
       child.stdout?.on('data', (chunk: Buffer) => { stdoutData += chunk.toString(); });
       child.stderr?.on('data', (chunk: Buffer) => { stderrData += chunk.toString(); });

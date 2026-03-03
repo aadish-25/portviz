@@ -114,8 +114,8 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "tsc --noEmit -p ./",
+    "watch": "tsc --noEmit -watch -p ./",
     "build": "node esbuild.js",
     "build:watch": "node esbuild.js --watch",
     "vscode:prepublish": "npm run build",
