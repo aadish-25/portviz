@@ -399,68 +399,6 @@ body {
   flex-shrink: 0;
 }
 
-/* ── CLI MISSING PROMPT (polished) ── */
-.cli-missing {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  min-height: 120px !important;
-  text-align: center !important;
-  color: var(--vscode-editor-foreground) !important;
-  background: transparent;
-  border-radius: 8px !important;
-  margin: 12px 10px 0 10px !important;
-  padding: 10px !important;
-  box-shadow: none !important;
-  border: 1px solid rgba(255,255,255,0.02) !important;
-}
-.cli-missing svg { opacity: 0.95; width: 40px; height: 40px; margin-top: 100px; }
-.cli-missing h2 {
-  margin: 6px 0 6px 0 !important;
-  font-size: 1.02rem !important;
-  color: #4fc3f7 !important;
-  font-weight: 700 !important;
-}
-.cli-missing .cli-desc {
-  color: var(--vscode-descriptionForeground, rgba(255,255,255,0.6)) !important;
-  margin-bottom: 8px !important;
-  font-size: 0.92rem !important;
-}
-.cli-missing .cli-install {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 5px !important;
-  margin-bottom: 6px !important;
-  text-align: center !important;
-}
-.cli-missing pre {
-  background: var(--vscode-input-background, rgba(255,255,255,0.02)) !important;
-  color: var(--vscode-editor-foreground) !important;
-  padding: 6px 10px !important;
-  border-radius: 6px !important;
-  margin: 0 !important;
-  font-size: 0.85rem !important;
-  border: 1px solid rgba(255,255,255,0.02) !important;
-}
-.cli-missing .btn-copy-pip {
-  padding: 6px 10px !important;
-  border-radius: 6px !important;
-  background: linear-gradient(180deg,#29b6f6,#1eaed6) !important;
-  color: #07202a !important;
-  border: none !important;
-  font-weight: 600 !important;
-  cursor: pointer !important;
-  display: block !important;
-  margin: 0 auto !important;
-}
-.cli-missing .btn-copy-pip:hover { filter: brightness(0.95); }
-.cli-missing .cli-error {
-  display: none !important;
-}
-
 .process-chevron.open { transform: rotate(90deg); }
 
 .process-dot {
@@ -1928,24 +1866,6 @@ body {
 /* ════════════════════════════════════
    ACCESSIBILITY
    ════════════════════════════════════ */
-
-/* ── ADJUSTED SPACING & HIDE ERRORS (TODO) ── */
-:root { --pv-gap: 12px; }
-
-/* Slightly more generous spacing between overview cards and sections */
-.ov-section { margin-bottom: 24px; }
-.ov-grid { gap: var(--pv-gap); }
-
-/* Add breathing room for live controls and process rows */
-.live-controls { gap: 18px; padding: 10px 16px; }
-.process-row { padding: 8px 14px; }
-
-/* Ensure certain transient error UI is hidden until explicitly enabled */
-.error,
-.orch-modal-error,
-.cli-error,
-.validation-error { display: none !important; }
-
 
 /* Focus-visible ring for all interactive elements */
 button:focus-visible,
