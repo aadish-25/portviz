@@ -97,7 +97,7 @@ body {
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
 }
 
-/* ── SHARED BUTTON STYLES ── */
+/* SHARED BUTTON STYLES ── */
 .btn-icon {
   background: none;
   border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
@@ -1889,4 +1889,87 @@ select:focus-visible,
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── CLI MISSING PROMPT (restored) ── */
+.cli-missing {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 120px !important;
+  text-align: center !important;
+  color: var(--vscode-editor-foreground) !important;
+  background: transparent;
+  border-radius: 8px !important;
+  margin: 50px 10px 0 10px !important;
+  padding: 10px !important;
+  box-shadow: none !important;
+  border: 1px solid rgba(255,255,255,0.02) !important;
+}
+.cli-missing svg { opacity: 0.95; width: 40px; height: 40px; margin-top: 8px; }
+.cli-missing h2 {
+  margin: 6px 0 6px 0 !important;
+  font-size: 1.02rem !important;
+  color: #4fc3f7 !important;
+  font-weight: 700 !important;
+}
+.cli-missing .cli-desc {
+  color: var(--vscode-descriptionForeground, rgba(255,255,255,0.6)) !important;
+  margin-bottom: 8px !important;
+  font-size: 0.92rem !important;
+}
+.cli-missing .cli-install {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  margin-bottom: 6px !important;
+  text-align: center !important;
+}
+.cli-missing pre {
+  margin-bottom: 12px !important;
+  text-align: center !important;
+}
+.cli-missing .btn-copy-pip {
+  padding: 6px 18px !important;
+  border-radius: 6px !important;
+  background: linear-gradient(180deg,#29b6f6,#1eaed6) !important;
+  color: #07202a !important;
+  border: none !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  display: block !important;
+  margin: 0 auto !important;
+}
+.cli-missing .cli-error {
+  display: none !important;
+}
+
+/* ── CLI MISSING PROMPT VISUAL ENHANCEMENTS ── */
+.cli-missing {
+  background: linear-gradient(120deg, rgba(35,43,58,0.45), rgba(26,34,51,0.45));
+  border: 1.5px solid #29b6f6 !important;
+  box-shadow: 0 2px 16px rgba(41,182,246,0.08);
+}
+.cli-missing pre {
+  background: rgba(41,182,246,0.13);
+  color: #fff;
+  border-radius: 8px;
+  border: 1px solid #29b6f6;
+  padding: 8px 18px !important;
+  font-size: 1.05em;
+  margin-bottom: 12px !important;
+}
+
+.cli-missing .cli-reload-msg {
+  margin-top: 10px;
+  font-size: 0.97em;
+  color: #b3e5fc;
+  background: rgba(41,182,246,0.04);
+  border-radius: 6px;
+  padding: 7px 12px;
+  text-align: center;
+  max-width: 320px;
 }
