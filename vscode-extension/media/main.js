@@ -934,7 +934,7 @@ function orchShowModal(editId = null, presetGroup = null) {
     document
       .querySelectorAll(".orch-dropdown-option")
       .forEach((o) => o.classList.remove("selected"));
-    document.getElementById("orch-input-port").value = "";
+    // Port input removed
     document.getElementById("orch-input-cwd").value = "";
     document.getElementById("orch-input-cmds").value = "";
     document.getElementById("orch-input-env").value = "";
@@ -1044,8 +1044,7 @@ function orchCloseModal() {
 function orchFormSubmit() {
   const name = document.getElementById("orch-input-name").value.trim();
   const role = document.getElementById("orch-input-role").value;
-  const port =
-    parseInt(document.getElementById("orch-input-port").value) || undefined;
+  // Port input removed
   const cwd = document.getElementById("orch-input-cwd").value.trim();
   const cmdsText = document.getElementById("orch-input-cmds").value.trim();
   const editId = document.getElementById("orch-edit-id").value;
@@ -1086,16 +1085,7 @@ function orchFormSubmit() {
     showFieldError("orch-input-cmds", "At least one start command is required");
   }
 
-  // Validate port range
-  const portRaw = document.getElementById("orch-input-port").value.trim();
-  if (
-    portRaw !== "" &&
-    (isNaN(parseInt(portRaw)) ||
-      parseInt(portRaw) < 0 ||
-      parseInt(portRaw) > 65535)
-  ) {
-    showFieldError("orch-input-port", "Port must be between 0 and 65535");
-  }
+  // Port validation removed
 
   if (hasError) {
     return;
@@ -1124,7 +1114,6 @@ function orchFormSubmit() {
   const service = {
     name,
     role,
-    port,
     startCommands: commands,
     workingDirectory: cwd,
     autoDetected: false,
@@ -1385,13 +1374,9 @@ function renderOrchestration(detected, saved, groups) {
         escapeHtml(svc.id) +
         '" title="Edit service configuration"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
       c +=
-        '<button class="orch-action-btn orch-btn-duplicate" data-orch-dup-id="' +
-        escapeHtml(svc.id) +
-        '" title="Duplicate this service"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>';
-      c +=
         '<button class="orch-action-btn orch-btn-delete" data-orch-delete-id="' +
         escapeHtml(svc.id) +
-        '" title="Delete this service permanently"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg></button>';
+        '" title="Delete this service"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg></button>';
       c += "</div>";
       c += "</div>";
       return c;
@@ -1432,6 +1417,10 @@ function renderOrchestration(detected, saved, groups) {
         '<button class="orch-action-btn orch-btn-start" data-stack-start="' +
         escapeHtml(groupName) +
         '" title="Start all services in this stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
+      html +=
+        '<button class="orch-action-btn orch-btn-stop" data-stack-stop="' +
+        escapeHtml(groupName) +
+        '" title="Stop all services in this stack"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>';
       html +=
         '<button class="orch-action-btn orch-btn-ungroup" data-stack-ungroup="' +
         escapeHtml(groupName) +
@@ -1498,6 +1487,17 @@ function renderOrchestration(detected, saved, groups) {
       });
     });
 
+    // Stop all in stack
+    savedList.querySelectorAll("[data-stack-stop]").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        vscode.postMessage({
+          type: "orchStopGroup",
+          group: this.dataset.stackStop,
+        });
+      });
+    });
+
     // Ungroup stack (keep services, remove group label)
     savedList.querySelectorAll("[data-stack-ungroup]").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
@@ -1552,15 +1552,6 @@ function renderOrchestration(detected, saved, groups) {
       });
     });
 
-    savedList.querySelectorAll("[data-orch-dup-id]").forEach((btn) => {
-      btn.addEventListener("click", function () {
-        vscode.postMessage({
-          type: "orchDuplicateService",
-          id: this.dataset.orchDupId,
-        });
-      });
-    });
-
     savedList.querySelectorAll("[data-orch-edit-id]").forEach((btn) => {
       btn.addEventListener("click", function () {
         const id = this.dataset.orchEditId;
@@ -1577,7 +1568,7 @@ function renderOrchestration(detected, saved, groups) {
           document.querySelectorAll(".orch-dropdown-option").forEach((o) => {
             o.classList.toggle("selected", o.dataset.value === service.role);
           });
-          document.getElementById("orch-input-port").value = service.port || "";
+          // Port field removed
           document.getElementById("orch-input-cwd").value =
             service.workingDirectory || "";
           document.getElementById("orch-input-cmds").value = (
@@ -1600,24 +1591,10 @@ function renderOrchestration(detected, saved, groups) {
 
     savedList.querySelectorAll("[data-orch-delete-id]").forEach((btn) => {
       btn.addEventListener("click", function () {
-        const deleteId = this.dataset.orchDeleteId;
-        if (this.dataset.confirmPending === "true") {
-          vscode.postMessage({
-            type: "orchDeleteService",
-            id: deleteId,
-          });
-        } else {
-          this.dataset.confirmPending = "true";
-          this.classList.add("orch-btn-confirm-delete");
-          this.innerHTML =
-            '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Sure?';
-          setTimeout(() => {
-            this.dataset.confirmPending = "false";
-            this.classList.remove("orch-btn-confirm-delete");
-            this.innerHTML =
-              '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4c0-.6.4-1 1-1h6c.6 0 1 .4 1 1v2"/><path d="M19 6l-.8 13c-.1.9-.8 1.5-1.7 1.5H7.5c-.9 0-1.6-.6-1.7-1.5L5 6"/></svg>';
-          }, 3000);
-        }
+        vscode.postMessage({
+          type: "orchDeleteService",
+          id: this.dataset.orchDeleteId,
+        });
       });
     });
   }

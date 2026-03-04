@@ -154,6 +154,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         case 'orchStartGroup':
           await this._handleOrchStartGroup(msg.group);
           break;
+        case 'orchStopGroup':
+          await this._handleOrchStopGroup(msg.group);
+          break;
         case 'orchUngroupStack':
           await this._handleOrchUngroupStack(msg.group);
           break;
@@ -630,6 +633,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   private async _handleOrchEditService(id: string, service: any): Promise<void> {
     try {
+      // If group is blank/undefined, explicitly remove it
+      if (!service.group) {
+        const all = this._orchestrationService.getSavedServices();
+        const svc = all.find(s => s.id === id);
+        if (svc && svc.group) {
+          delete svc.group;
+          this._orchestrationService.saveService(svc);
+        }
+        delete service.group;
+      }
       this._orchestrationService.updateService(id, service);
       this._sendOrchestrationData();
     } catch (error) {
@@ -639,6 +652,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   private async _handleOrchDeleteService(id: string): Promise<void> {
     try {
+      const services = this._orchestrationService.getSavedServices();
+      const svc = services.find(s => s.id === id);
+      const name = svc?.name ?? 'this service';
+
+      const confirm = await vscode.window.showWarningMessage(
+        `Delete service "${name}"?`,
+        { modal: true },
+        'Yes'
+      );
+      if (confirm !== 'Yes') { return; }
+
       this._orchestrationService.deleteService(id);
       this._sendOrchestrationData();
     } catch (error) {
@@ -715,6 +739,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async _handleOrchStopGroup(group: string): Promise<void> {
+    try {
+      const services = this._orchestrationService.getSavedServices().filter(s => s.group === group);
+      for (const service of services) {
+        this._orchestrationService.stopService(service);
+      }
+      this._sendOrchestrationData();
+      setTimeout(() => { if (this._view) { this.refresh(); } }, 2000);
+    } catch (error) {
+      vscode.window.showErrorMessage('Failed to stop group: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
   private async _handleOrchUngroupStack(group: string): Promise<void> {
     try {
       this._orchestrationService.removeGroupFromServices(group);
@@ -738,19 +775,57 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   private async _handleOrchAcceptDetection(detected: any): Promise<void> {
     try {
+      // Generate default start commands based on framework
+      let defaultCmds = this._getDefaultCommands(detected.framework, detected.role);
+      // Fallback: try role if framework is missing
+      if ((!defaultCmds || defaultCmds.length === 0) && detected.role) {
+        defaultCmds = this._getDefaultCommands(undefined, detected.role);
+      }
       this._orchestrationService.saveService({
         id: this._orchestrationService.generateId(),
         name: detected.name,
         port: detected.port,
         role: detected.role,
-        startCommands: [],
-        workingDirectory: '',
+        startCommands: defaultCmds,
+        workingDirectory: '.',
         autoDetected: true
       });
       this._sendOrchestrationData();
     } catch (error) {
       vscode.window.showErrorMessage('Failed to accept detected service: ' + (error instanceof Error ? error.message : String(error)));
     }
+  }
+
+  private _getDefaultCommands(framework?: string, role?: string): string[] {
+    const fw = (framework ?? '').toLowerCase();
+    if (fw.includes('react') || fw.includes('next') || fw.includes('vite') || fw.includes('angular') || fw.includes('astro') || fw.includes('vue')) {
+      return ['npm run dev'];
+    }
+    if (fw.includes('express') || fw.includes('nest') || fw.includes('graphql') || fw.includes('node')) {
+      return ['npm run dev'];
+    }
+    if (fw.includes('django')) { return ['python manage.py runserver']; }
+    if (fw.includes('uvicorn')) { return ['uvicorn main:app --reload']; }
+    if (fw.includes('flask')) { return ['flask run']; }
+    if (fw.includes('gunicorn')) { return ['gunicorn app:app']; }
+    if (fw.includes('fastapi')) { return ['uvicorn main:app --reload']; }
+    if (fw.includes('python')) { return ['python main.py']; }
+    // Database start commands
+    if (fw.includes('postgres')) { return ['pg_ctl start']; }
+    if (fw.includes('mysql')) { return ['mysqld']; }
+    if (fw.includes('mongodb') || fw.includes('mongod')) { return ['mongod']; }
+    if (fw.includes('sql server')) { return ['sqlservr']; }
+    // Cache start commands
+    if (fw.includes('redis')) { return ['redis-server', 'memurai-cli']; }
+    if (fw.includes('memcached')) { return ['memcached']; }
+    // Fallback for role
+    if (role === 'database') { return []; }
+    if (role === 'cache') {
+      if (fw.includes('redis')) { return ['redis-server']; }
+      if (fw.includes('memcached')) { return ['memcached']; }
+      return [];
+    }
+    return [];
   }
 
   // ─────────────────────────────────────────────
@@ -949,13 +1024,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       </div>
 
       <div class="orch-modal-field">
-        <label class="orch-modal-label">Port</label>
-        <input type="number" class="orch-modal-input" id="orch-input-port" placeholder="e.g., 3000">
-      </div>
-
-      <div class="orch-modal-field">
         <label class="orch-modal-label">Working Directory</label>
-        <input type="text" class="orch-modal-input" id="orch-input-cwd" placeholder="e.g., /path/to/project">
+        <input type="text" class="orch-modal-input" id="orch-input-cwd" placeholder=". (current directory)">
       </div>
 
       <div class="orch-modal-field">

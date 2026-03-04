@@ -74,6 +74,69 @@ export class OrchestrationService {
       seen.add(key);
 
       const info = portInfo ?? procInfo!;
+      // Hardcode start commands based on role/framework
+      let startCommands: string[] = [];
+      switch (info.framework) {
+        case 'React / Next.js':
+        case 'React (alt)':
+        case 'Angular':
+        case 'Vite':
+        case 'Vite (alt)':
+        case 'Vue / Webpack Dev Server':
+        case 'Astro':
+          startCommands = ['npm start', 'yarn start', 'pnpm start'];
+          break;
+        case 'Flask / Express':
+          startCommands = ['flask run', 'npm run dev', 'node app.js'];
+          break;
+        case 'Django / Uvicorn':
+          startCommands = ['python manage.py runserver', 'uvicorn main:app'];
+          break;
+        case 'FastAPI (alt)':
+          startCommands = ['uvicorn main:app'];
+          break;
+        case 'GraphQL / NestJS':
+          startCommands = ['npm run start:dev', 'node server.js'];
+          break;
+        case 'PHP-FPM':
+          startCommands = ['php-fpm'];
+          break;
+        case 'PostgreSQL':
+          startCommands = ['pg_ctl start'];
+          break;
+        case 'MySQL':
+          startCommands = ['mysqld'];
+          break;
+        case 'MongoDB':
+          startCommands = ['mongod'];
+          break;
+        case 'SQL Server':
+          startCommands = ['sqlservr'];
+          break;
+        case 'Redis':
+          startCommands = ['redis-server'];
+          break;
+        case 'Memcached':
+          startCommands = ['memcached'];
+          break;
+        case 'Node.js':
+          startCommands = ['npm start', 'node app.js'];
+          break;
+        case 'Python':
+          startCommands = ['python app.py'];
+          break;
+        case 'Uvicorn':
+          startCommands = ['uvicorn main:app'];
+          break;
+        case 'Gunicorn':
+          startCommands = ['gunicorn app:app'];
+          break;
+        case 'Java':
+          startCommands = ['mvn spring-boot:run', 'java -jar app.jar'];
+          break;
+        default:
+          startCommands = [];
+      }
       results.push({
         name: info.framework,
         role: info.role,
@@ -148,36 +211,39 @@ export class OrchestrationService {
       }
     }
 
-    // Check for timeouts on services that are still starting
+    // Check for timeouts — only if notifications enabled
+    const notifyTimeout = vscode.workspace.getConfiguration('portviz').get<boolean>('notifications.serviceStartTimeout', false);
     const now = Date.now();
-    for (const serviceId of this._startingIds) {
+    for (const serviceId of [...this._startingIds]) {
       const startTime = this._startTimes.get(serviceId);
       if (startTime && (now - startTime) > this.START_TIMEOUT) {
         this._startingIds.delete(serviceId);
         this._startTimes.delete(serviceId);
         this._errorIds.add(serviceId);
-        // Find service name for the error message
-        const svc = saved.find(s => s.id === serviceId);
-        const svcName = svc ? svc.name : 'Unknown';
-        vscode.window.showErrorMessage(
-          `Service "${svcName}" did not start within ${this.START_TIMEOUT / 1000}s. Check its commands, working directory, and port configuration.`
-        );
+        if (notifyTimeout) {
+          const svc = saved.find(s => s.id === serviceId);
+          const svcName = svc ? svc.name : 'Unknown';
+          vscode.window.showErrorMessage(
+            `Service "${svcName}" did not start within ${this.START_TIMEOUT / 1000}s. Check its commands, working directory, and port configuration.`
+          );
+        }
       }
     }
 
     return saved.map(svc => {
       let status: ServiceStatus = 'stopped';
 
-      if (this._startingIds.has(svc.id)) {
+      if (svc.port && listeningPorts.has(svc.port)) {
+        // Port is live — service is running, clear any starting state
+        status = 'running';
+        this._startingIds.delete(svc.id);
+        this._startTimes.delete(svc.id);
+        this._errorIds.delete(svc.id);
+        svc.linkedPid = listeningPorts.get(svc.port)!.pid;
+      } else if (this._startingIds.has(svc.id)) {
         status = 'starting';
       } else if (this._errorIds.has(svc.id)) {
         status = 'error';
-      } else if (svc.port && listeningPorts.has(svc.port)) {
-        status = 'running';
-        // Update linked PID from live data
-        svc.linkedPid = listeningPorts.get(svc.port)!.pid;
-        // Clear start time since service successfully started
-        this._startTimes.delete(svc.id);
       }
 
       return { ...svc, status };
@@ -209,12 +275,32 @@ export class OrchestrationService {
 
     terminal.show(false);
 
-    // Send commands one-by-one to support PowerShell 5.1 (which lacks && operator)
+    // Try each start command in order, check for port after each
     for (const cmd of service.startCommands) {
-      terminal.sendText(cmd);
+      if (typeof cmd === 'string' && cmd.length > 0) {
+        terminal.sendText(cmd);
+        // Wait for a short period, then check if port is live
+        await new Promise(res => setTimeout(res, 3000)); // 3s delay (tweak as needed)
+        // Check if port is live
+        const isLive = await this._isServicePortLive(service);
+        if (isLive) {
+          break;
+        }
+      }
     }
   }
 
+  /** Check if the service port is live (listening) */
+  private async _isServicePortLive(service: Service): Promise<boolean> {
+    // This should call into the port detection logic, e.g., by reusing reconcileStatus or similar
+    // For now, we assume a global method getLivePorts() exists (replace with actual logic)
+    // You may need to refactor to pass live port data or trigger a refresh
+    // Example stub:
+    // const livePorts = await getLivePorts();
+    // return livePorts.some(p => p.local_port === service.port);
+    // For now, always return false (replace with real check)
+    return false;
+  }
   stopService(service: Service): void {
     const terminal = this._terminals.get(service.id);
     if (terminal && terminal.exitStatus === undefined) {

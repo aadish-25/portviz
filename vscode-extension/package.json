@@ -2,7 +2,7 @@
   "name": "portviz",
   "displayName": "Portviz",
   "description": "Port & Process Inspector for Developers",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "publisher": "aadish-25",
   "author": "Aadish Sonawane",
   "license": "MIT",
@@ -105,7 +105,7 @@
         },
         "portviz.notifications.publicPort": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Warn when a new public-facing port (0.0.0.0) is detected"
         },
         "portviz.resourceMonitor.enabled": {
