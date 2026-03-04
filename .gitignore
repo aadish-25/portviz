@@ -140,15 +140,14 @@ vscode-extension/out/
 
 # Visual Studio Code
 .vscode/
+.idea/
 
-# Python virtual environments
-*.venv
-
-# macOS
-*.DS_Store
-
-# npm
+# npm and VS Code extension
 node_modules/
+vscode-extension/node_modules/
+vscode-extension/out/
+vscode-extension/dist/
+*.vsix
 
 # logs
 logs/
@@ -160,33 +159,5 @@ coverage/
 # temporary files
 *.tmp
 
-# portviz-specific
+# portviz-specific runtime data
 .portviz/
-# (add any additional project-specific ignores as needed)
-
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
-
-# Local runtime data
-.portviz/
-
-# Virtual environments
-venv/
-env/
-.venv/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
