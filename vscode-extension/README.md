@@ -26,8 +26,8 @@ At-a-glance summary of your machine's port activity — listening ports, public 
 ### 📸 Snapshots
 
 <p>
-  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/empty-snapshot.png" alt="Empty snapshots" width="49%">
-  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/snapshot-diff.png" alt="Snapshot diff" width="49%">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/empty-snapshot.png" alt="Empty snapshots" height="300">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/snapshot-diff.png" alt="Snapshot diff" height="300">
 </p>
 
 - Save, rename, and delete named snapshots
@@ -39,9 +39,10 @@ At-a-glance summary of your machine's port activity — listening ports, public 
 ### ⚙️ Orchestration
 
 <p>
-  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-tab.png" alt="Orchestration tab" width="32%">
-  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-full.png" alt="Orchestration full" width="32%">
-  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-create-stack.png" alt="Create stack" width="32%">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/empty-orch.png" alt="Empty orchestration" height="280">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-tab.png" alt="Orchestration tab" height="280">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-full.png" alt="Orchestration full" height="280">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-create-stack.png" alt="Create stack" height="280">
 </p>
 
 - **Auto-detect** running dev services by matching ports and processes
@@ -103,11 +104,19 @@ Search `portviz` in Settings to configure:
 
 ## Release Notes
 
+### 1.0.4
+
+- Added orchestration empty state screenshot
+- Reordered orchestration screenshots for clarity
+- All orchestration images now have equal height
+
+### 1.0.1
+
+- Fixed marketplace image URLs
+
 ### 1.0.0
 
-Initial release with:
-
-- Overview, Live, Snapshots, and Orchestration tabs
+- Initial release with Overview, Live, Snapshots, and Orchestration tabs
 - Snapshot diff — compare two snapshots or snapshot vs current
 - Service detection, CRUD, and stack management
 - Per-process CPU & memory badges
