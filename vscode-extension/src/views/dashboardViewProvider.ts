@@ -191,7 +191,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       const result = await runner.runReport();
 
       if (!result.success || !result.data) {
-        vscode.window.showErrorMessage(result.error ?? 'Failed to load Portviz data');
+        this._view?.webview.postMessage({
+          type: 'cliMissing',
+          error: result.error ?? 'Failed to load Portviz data'
+        });
         return;
       }
 
@@ -211,7 +214,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this._resourceMonitor.track(activePids);
       this._resourceMonitor.startPolling();
     } catch (error) {
-      vscode.window.showErrorMessage('Refresh failed: ' + (error instanceof Error ? error.message : String(error)));
+      this._view?.webview.postMessage({
+        type: 'cliMissing',
+        error: error instanceof Error ? error.message : String(error)
+      });
     } finally {
       this._isRefreshing = false;
       this._view?.webview.postMessage({ type: 'loadingEnd' });
