@@ -2,7 +2,7 @@
 
 See every listening port, who owns it, and whether it's exposed — right inside VS Code.
 
-![Overview](media/screenshots/overview-tab.png)
+![Overview](https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/overview-tab.png)
 
 ## Features
 
@@ -12,7 +12,7 @@ At-a-glance summary of your machine's port activity — listening ports, public 
 
 ### 🔴 Live Monitoring
 
-![Live tab](media/screenshots/live-tab.png)
+![Live tab](https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/live-tab.png)
 
 - Expandable process list — click any process to see its ports
 - **Live CPU % and memory** badges per process
@@ -26,8 +26,8 @@ At-a-glance summary of your machine's port activity — listening ports, public 
 ### 📸 Snapshots
 
 <p>
-  <img src="media/screenshots/empty-snapshot.png" alt="Empty snapshots" width="49%">
-  <img src="media/screenshots/snapshot-diff.png" alt="Snapshot diff" width="49%">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/empty-snapshot.png" alt="Empty snapshots" width="49%">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/snapshot-diff.png" alt="Snapshot diff" width="49%">
 </p>
 
 - Save, rename, and delete named snapshots
@@ -39,9 +39,9 @@ At-a-glance summary of your machine's port activity — listening ports, public 
 ### ⚙️ Orchestration
 
 <p>
-  <img src="media/screenshots/orch-tab.png" alt="Orchestration tab" width="32%">
-  <img src="media/screenshots/orch-full.png" alt="Orchestration full" width="32%">
-  <img src="media/screenshots/orch-create-stack.png" alt="Create stack" width="32%">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-tab.png" alt="Orchestration tab" width="32%">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-full.png" alt="Orchestration full" width="32%">
+  <img src="https://raw.githubusercontent.com/aadish-25/portviz/main/vscode-extension/media/screenshots/orch-create-stack.png" alt="Create stack" width="32%">
 </p>
 
 - **Auto-detect** running dev services by matching ports and processes
@@ -103,7 +103,7 @@ Search `portviz` in Settings to configure:
 
 ## Release Notes
 
-### 0.0.1
+### 1.0.0
 
 Initial release with:
 
