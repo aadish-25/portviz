@@ -1,154 +1,123 @@
-# Portviz – Port & Process Dashboard for VS Code
+# Portviz — Port & Process Inspector for VS Code
 
-> Visualize listening ports, detect public exposure, snapshot environments, and orchestrate your dev stack – all without leaving VS Code.
+See every listening port, who owns it, and whether it's exposed — right inside VS Code.
 
-![Portviz Dashboard – Overview tab](media/screenshots/overview-tab.png)
+![Overview](media/screenshots/overview-tab.png)
 
 ## Features
 
-### 1. Overview – At-a-glance risk & activity
+### 📊 Overview
 
-- Total listening ports, UDP ports, and distinct processes.
-- Public ports surfaced with a simple risk list.
-- Quick sense of how "noisy" your machine is during development.
+At-a-glance summary of your machine's port activity — listening ports, public exposure count, process count, UDP ports, and a **risk insight** panel ranking publicly-exposed services by severity.
 
-### 2. Live – Processes, ports, and resource usage
+### 🔴 Live Monitoring
 
-- Group ports by process with clear PID and port counts.
-- One-click kill for a process (via Portviz CLI).
-- "Open in Browser" for HTTP services on localhost.
-- Filters:
-  - Hide system processes
-  - Public-only view
-  - Show UDP
-- Sort by name, PID, or port count.
-- **Live resource badges** per process:
-  - CPU% (color-coded: low / medium / high)
-  - Memory usage (MB)
-- Optional auto-refresh with configurable interval.
+![Live tab](media/screenshots/live-tab.png)
 
-![Live tab – processes with CPU & memory badges](media/screenshots/live-tab.png)
+- Expandable process list — click any process to see its ports
+- **Live CPU % and memory** badges per process
+- Auto-detected framework hints (~40 frameworks, ~15 well-known ports)
+- Filter: hide system processes, public-only, show UDP
+- Sort by name, PID, or port count
+- **One-click kill** with confirmation dialog
+- **Open in browser** for any TCP port
+- Auto-refresh with configurable interval
 
-### 3. Snapshots – Capture and compare environments
+### 📸 Snapshots
 
-- Save the current listening-port state with a friendly name.
-- Snapshot card shows:
-  - Total ports
-  - Public ports
-  - Distinct processes
-- Compare two snapshots:
-  - Ports added/removed
-  - Grouped by process for easy reading.
-- Compare any snapshot vs **Current** live state.
+<p>
+  <img src="media/screenshots/empty-snapshot.png" alt="Empty snapshots" width="49%">
+  <img src="media/screenshots/snapshot-diff.png" alt="Snapshot diff" width="49%">
+</p>
 
-![Snapshots – empty state](media/screenshots/empty-snapshot.png)
+- Save, rename, and delete named snapshots
+- Compare any two snapshots — or a snapshot vs current live state
+- Grouped diff view: see added/removed/unchanged ports **per process**
+- Swap compare direction with one click
+- Configurable max snapshot limit
 
-![Snapshot diff – added/removed ports by process](media/screenshots/snapshot-diff.png)
+### ⚙️ Orchestration
 
-### 4. Orchestration – Manage your dev stack
+<p>
+  <img src="media/screenshots/orch-tab.png" alt="Orchestration tab" width="32%">
+  <img src="media/screenshots/orch-full.png" alt="Orchestration full" width="32%">
+  <img src="media/screenshots/orch-create-stack.png" alt="Create stack" width="32%">
+</p>
 
-- Detect likely dev services from live port data (framework and role heuristics).
-- Save services with:
-  - Name, role (frontend/backend/database/cache/custom)
-  - Port, working directory
-  - Start commands (one per line)
-  - Optional env vars and group/stack name.
-- Start/stop a single service or an entire stack group.
-- Orchestration status reconciled from port state.
+- **Auto-detect** running dev services by matching ports and processes
+- **Create / edit / duplicate / delete** service definitions
+- Configure: name, role, port, working directory, start commands, env vars, group
+- **Start / stop** services via integrated VS Code terminals
+- **Service stacks** — group services, bulk start, ungroup, or delete
+- Status tracking: running · starting · stopped · error
+- Timeout detection for startup failures
+- Free-text search/filter across all services
 
-![Orchestration tab – detected and saved services](media/screenshots/orch-tab.png)
+### 🔔 Notifications
 
-![Orchestration – full stack view](media/screenshots/orch-full.png)
+- Port opened / port closed toasts (opt-in)
+- **Public port warning** when a service binds to `0.0.0.0` (on by default)
+- **Watch list** — monitor specific ports for up/down alerts
+- Service start timeout errors
+- Kill result confirmations
 
-![Orchestration – create stack](media/screenshots/orch-create-stack.png)
+### 📈 Resource Monitor
 
-### 5. Notifications (optional)
-
-- Alert when ports open/close.
-- Extra warnings when services bind to `0.0.0.0` (public).
-- Ability to watch specific ports and get notified when they come up or go down.
-
-### 6. Cross-platform resource monitoring
-
-- Windows: uses PowerShell (`Get-CimInstance`, `Get-Process`).
-- macOS / Linux: uses `ps` for `%CPU` and RSS memory.
-- No external dependencies beyond the Portviz CLI and standard system tools.
+- Per-process **CPU %** and **memory** badges in the Live tab
+- Cross-platform: Windows (PowerShell/CIM), macOS/Linux (`ps`)
+- Configurable poll interval, can be disabled
 
 ---
 
 ## Requirements
 
-- **VS Code** 1.8x or newer (matches `engines.vscode` in `package.json`).
-- **Portviz CLI** installed and on your PATH.
-  - The extension shells out to `portviz report --json` and `portviz kill`.
+- **[Portviz CLI](https://pypi.org/project/portviz/)** installed and on your `PATH` (`pip install portviz`)
+- **VS Code 1.80+**
 
 ---
 
-## Commands
+## Extension Settings
 
-The extension contributes these commands:
+Search `portviz` in Settings to configure:
 
-- `portviz.refresh` – Refresh the Portviz dashboard data.
-
-The main interaction point is the **Portviz Dashboard** view (side bar), not the command palette. The old `portviz.showReport` command is no longer exposed; everything flows through the dashboard.
-
----
-
-## Settings
-
-Search for **"Portviz"** in the VS Code Settings UI.
-
-### Refresh & limits
-
-- `portviz.autoRefreshInterval` (number, default: `5` seconds)
-  - How often the Live tab auto-refreshes when enabled.
-- `portviz.cliTimeout` (number, default: `15` seconds)
-  - Timeout for the Portviz CLI calls.
-- `portviz.serviceStartTimeout` (number, default: `30` seconds)
-  - How long to wait for a dev service to start listening before marking as timed out.
-- `portviz.maxSnapshots` (number, default: `15`)
-  - Maximum number of snapshots to keep (oldest are pruned).
-
-### Notifications
-
-- `portviz.notifications.portOpened` (boolean, default: `false`)
-  - Show an info toast when a new port starts listening.
-- `portviz.notifications.portClosed` (boolean, default: `false`)
-  - Show an info toast when a port stops listening.
-- `portviz.notifications.publicPort` (boolean, default: `true`)
-  - Show a warning when a port is opened on `0.0.0.0`.
-
-### Resource Monitor
-
-- `portviz.resourceMonitor.enabled` (boolean, default: `true`)
-  - Enable the per-process CPU & memory polling.
-- `portviz.resourceMonitor.refreshInterval` (number, default: `10` seconds)
-  - Polling interval for resource data.
+| Setting                                   | Default | Description                           |
+| ----------------------------------------- | ------- | ------------------------------------- |
+| `portviz.autoRefreshInterval`             | `5` s   | Live tab auto-refresh rate            |
+| `portviz.cliTimeout`                      | `15` s  | CLI call timeout                      |
+| `portviz.serviceStartTimeout`             | `30` s  | Wait for a service to start listening |
+| `portviz.maxSnapshots`                    | `15`    | Max saved snapshots                   |
+| `portviz.notifications.portOpened`        | `false` | Toast on new port                     |
+| `portviz.notifications.portClosed`        | `false` | Toast on port close                   |
+| `portviz.notifications.publicPort`        | `true`  | Warn on `0.0.0.0` bind                |
+| `portviz.resourceMonitor.enabled`         | `true`  | Per-process CPU/memory polling        |
+| `portviz.resourceMonitor.refreshInterval` | `10` s  | Resource poll rate                    |
 
 ---
 
-## Usage
+## Known Issues
 
-1. **Open the Portviz Dashboard**
-   - Open the **Ports / Portviz** view in the Activity Bar / Side Bar.
+- Killing system-level processes on Windows may require running VS Code as Administrator.
+- Resource monitor data may lag slightly behind port data due to separate polling intervals.
 
-2. **Run your usual dev stack**
-   - Start your servers (frontend, backend, DB, etc.) as normal.
+---
 
-3. **Refresh & inspect**
-   - Click the **Refresh** button in the dashboard header or run `Portviz: Refresh`.
-   - Use the **Overview** tab to see global counts and risk.
-   - Use the **Live** tab to expand processes and see their ports and resources.
+## Release Notes
 
-4. **Capture a snapshot**
-   - Go to **Snapshots** tab.
-   - Click **Save Snapshot** and name it (e.g. `before-deploy`).
+### 0.0.1
 
-5. **Compare environments**
-   - Select any two snapshots (A & B) and press **Compare**.
-   - Or compare a snapshot vs **Current** state.
+Initial release with:
 
-6. **Orchestrate your stack**
-   - Go to **Orch** tab.
-   - Click **Detect** to see suggested services.
-   - Save them, group them, and start or stop them from VS Code.
+- Overview, Live, Snapshots, and Orchestration tabs
+- Snapshot diff — compare two snapshots or snapshot vs current
+- Service detection, CRUD, and stack management
+- Per-process CPU & memory badges
+- Port open/close/public notifications
+- Configurable auto-refresh, timeouts, and limits
+
+---
+
+## More Information
+
+- **CLI & full docs:** [github.com/aadish-25/portviz](https://github.com/aadish-25/portviz)
+- **Report issues:** [GitHub Issues](https://github.com/aadish-25/portviz/issues)
+- **License:** [MIT](https://github.com/aadish-25/portviz/blob/main/LICENSE)
