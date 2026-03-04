@@ -82,17 +82,19 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 
 // ── Refresh button ──
 document.getElementById("btn-refresh").addEventListener("click", () => {
-  // Ask the extension backend to refresh data, then reload the webview
-  // to ensure all tabs and UI state are fully refreshed.
+  // Ask backend to refresh data and explicitly request other tab data
   vscode.postMessage({ type: "refresh" });
-  // slight delay to allow the message to be dispatched
+  // show loading UI briefly
+  document.querySelectorAll('.tab-content').forEach(c => c.innerHTML = '<div class="loading-state">Loading\u2026</div>');
+  // request orchestration and snapshot data to ensure tabs update
   setTimeout(() => {
     try {
-      window.location.reload();
+      vscode.postMessage({ type: 'orchLoad' });
+      vscode.postMessage({ type: 'snapshotList' });
     } catch (e) {
-      // ignore reload errors in environments where not allowed
+      // ignore
     }
-  }, 250);
+  }, 300);
 });
 
 // ── Filter toggles ──
