@@ -28,7 +28,7 @@
     "monitor",
     "inspector"
   ],
-  "icon": "media/port.svg",
+  "icon": "media/icon.png",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onView:portviz.dashboard"
