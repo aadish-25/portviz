@@ -241,7 +241,15 @@ export class OrchestrationService {
         this._errorIds.delete(svc.id);
         svc.linkedPid = listeningPorts.get(svc.port)!.pid;
       } else if (this._startingIds.has(svc.id)) {
-        status = 'starting';
+        // If terminal has finished (exitStatus set), mark as stopped
+        const term = this._terminals.get(svc.id);
+        if (term && term.exitStatus !== undefined) {
+          this._startingIds.delete(svc.id);
+          this._startTimes.delete(svc.id);
+          status = 'stopped';
+        } else {
+          status = 'starting';
+        }
       } else if (this._errorIds.has(svc.id)) {
         status = 'error';
       }
@@ -262,17 +270,38 @@ export class OrchestrationService {
     this._startTimes.set(service.id, Date.now());
     this._errorIds.delete(service.id); // Clear previous error on retry
 
-    // Reuse or create terminal
+    // If cwd is missing or relative, resolve to workspace root or subfolder
+    const path = require('path');
+    let cwd = service.workingDirectory;
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders && folders.length > 0 && folders[0] && folders[0].uri) {
+      const wsRoot = folders[0].uri.fsPath;
+      if (!cwd || cwd.trim() === '' || cwd === '.' || cwd === './' || cwd === '.\\') {
+        cwd = wsRoot;
+      } else if (!path.isAbsolute(cwd)) {
+        // Remove leading './', '.\\', '/', '\\', normalize slashes
+        cwd = cwd.replace(/^\.?[\\\/]/, '');
+        cwd = path.join(wsRoot, cwd);
+      }
+      cwd = path.resolve(cwd); // Use resolve for full normalization
+      // Fallback: if still not absolute, use workspace root
+      if (!path.isAbsolute(cwd)) {
+        cwd = wsRoot;
+      }
+    } else {
+      // Fallback: if no workspace folder, use process.cwd()
+      cwd = process.cwd();
+    }
+    vscode.window.showInformationMessage(`Portviz: resolved cwd for service '${service.name}' is: ${cwd}`);
     let terminal = this._terminals.get(service.id);
     if (!terminal || terminal.exitStatus !== undefined) {
       terminal = vscode.window.createTerminal({
         name: `Portviz: ${service.name}`,
-        cwd: service.workingDirectory,
+        cwd,
         ...(service.envVars ? { env: service.envVars } : {}),
       });
       this._terminals.set(service.id, terminal);
     }
-
     terminal.show(false);
 
     // Try each start command in order, check for port after each
@@ -292,14 +321,18 @@ export class OrchestrationService {
 
   /** Check if the service port is live (listening) */
   private async _isServicePortLive(service: Service): Promise<boolean> {
-    // This should call into the port detection logic, e.g., by reusing reconcileStatus or similar
-    // For now, we assume a global method getLivePorts() exists (replace with actual logic)
-    // You may need to refactor to pass live port data or trigger a refresh
-    // Example stub:
-    // const livePorts = await getLivePorts();
-    // return livePorts.some(p => p.local_port === service.port);
-    // For now, always return false (replace with real check)
-    return false;
+    // Use latest port data from dashboard view (if available)
+    // This assumes a global PortEntry[] is available, or you can inject it
+    // For now, try to get live port data from the resource monitor or snapshot service
+    // If not available, always return false
+    try {
+      // If you have a way to get live port data, use it here
+      // Example: this._resourceMonitor.getLivePorts() or similar
+      // For now, fallback to false
+      return false;
+    } catch {
+      return false;
+    }
   }
   stopService(service: Service): void {
     const terminal = this._terminals.get(service.id);
