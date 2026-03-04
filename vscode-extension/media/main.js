@@ -82,7 +82,17 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 
 // ── Refresh button ──
 document.getElementById("btn-refresh").addEventListener("click", () => {
+  // Ask the extension backend to refresh data, then reload the webview
+  // to ensure all tabs and UI state are fully refreshed.
   vscode.postMessage({ type: "refresh" });
+  // slight delay to allow the message to be dispatched
+  setTimeout(() => {
+    try {
+      window.location.reload();
+    } catch (e) {
+      // ignore reload errors in environments where not allowed
+    }
+  }, 250);
 });
 
 // ── Filter toggles ──
