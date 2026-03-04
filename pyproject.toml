@@ -39,8 +39,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/portviz"
-Repository = "https://github.com/yourusername/portviz"
+Homepage = "https://github.com/aadish-25/portviz"
+Repository = "https://github.com/aadish-25/portviz"
 
 [project.scripts]
 portviz = "portviz.__main__:main"
