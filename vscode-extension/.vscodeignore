@@ -1,0 +1,28 @@
+# Source files
+src/**
+tsconfig.json
+esbuild.js
+
+# Dev dependencies & config
+node_modules/**
+.vscode/**
+
+# Build intermediates
+out/**
+*.map
+
+# Git & misc
+.git/**
+.gitignore
+
+# Test files
+**/*.test.ts
+**/*.test.js
+
+# Docs source (screenshots are needed for README)
+# media/screenshots/** — keep these for Marketplace listing
+
+# Temp files
+*.tmp
+*.log
+tmpclaude-*
