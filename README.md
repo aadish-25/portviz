@@ -90,7 +90,7 @@ portviz --version
 
 ---
 
-## ✨ Current Features (v1.0.1)
+## ✨ Current Features (v1.0.2)
 
 ### 🔎 Port Inspection (CLI)
 
@@ -500,7 +500,7 @@ Contributions are welcome! Here's how you can help:
 
 ## 📌 Project Status
 
-**Current Version:** v1.0.1
+**Current Version:** v1.0.2
 **Status:** Stable — Production Ready
 
 | Component             | Status                                |
